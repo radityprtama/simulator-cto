@@ -1,0 +1,6 @@
+{
+  "name": "CTO Simulator",
+  "description": "A strategic text-based management game where you manage technical debt, team morale, and budgets as the newly appointed CTO of your startup.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
