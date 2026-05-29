@@ -10,11 +10,27 @@ View your app in AI Studio: https://ai.studio/apps/7f28e788-8ec6-4cd5-9045-10bd8
 
 ## Run Locally
 
-**Prerequisites:**  Node.js
-
+**Prerequisites:** Node.js
 
 1. Install dependencies:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+2. Configure one AI provider in `.env.local`:
+   - Gemini: set `GEMINI_API_KEY`
+   - OpenRouter: set `OPENROUTER_API_KEY`
 3. Run the app:
    `npm run dev`
+
+## OpenRouter
+
+When `OPENROUTER_API_KEY` is set, the app uses OpenRouter instead of Gemini for server-side AI calls.
+
+Recommended fast-path settings:
+
+```dotenv
+OPENROUTER_API_KEY="YOUR_OPENROUTER_KEY"
+OPENROUTER_MODEL="google/gemini-2.5-flash"
+OPENROUTER_TIMEOUT_MS="12000"
+OPENROUTER_TITLE="CTO Simulator"
+```
+
+The OpenRouter adapter uses one configured model per request, structured JSON output for game API responses, and a bounded timeout so gameplay does not stall behind broad model fallback loops.
