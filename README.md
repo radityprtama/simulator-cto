@@ -29,8 +29,10 @@ Recommended fast-path settings:
 ```dotenv
 OPENROUTER_API_KEY="YOUR_OPENROUTER_KEY"
 OPENROUTER_MODEL="google/gemini-2.5-flash"
-OPENROUTER_TIMEOUT_MS="12000"
+OPENROUTER_TIMEOUT_MS="20000"
+OPENROUTER_MAX_TOKENS="2500"
 OPENROUTER_TITLE="CTO Simulator"
 ```
 
 The OpenRouter adapter uses one configured model per request, structured JSON output for game API responses, and a bounded timeout so gameplay does not stall behind broad model fallback loops.
+It also caps generated tokens by default to avoid slow or unexpectedly expensive completions.

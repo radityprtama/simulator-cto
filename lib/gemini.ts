@@ -72,7 +72,8 @@ type OpenRouterRawResponse = {
 
 const OPENROUTER_CHAT_COMPLETIONS_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_OPENROUTER_MODEL = "google/gemini-2.5-flash";
-const DEFAULT_OPENROUTER_TIMEOUT_MS = 12000;
+const DEFAULT_OPENROUTER_TIMEOUT_MS = 20000;
+const DEFAULT_OPENROUTER_MAX_TOKENS = 2500;
 const MAX_LOG_TEXT_LENGTH = 1000;
 const OPENROUTER_RETRY_DELAY_MS = 300;
 const TRANSIENT_OPENROUTER_STATUSES = new Set([429, 502, 503, 504]);
@@ -118,6 +119,7 @@ async function executeOpenRouterCall(params: GenerateContentParams, apiKey: stri
     model,
     messages: buildMessages(params),
     temperature: params.config?.temperature ?? 1.0,
+    max_tokens: readOpenRouterMaxTokens(),
     stream: false,
   };
 
@@ -191,14 +193,22 @@ function resolveOpenRouterModel(): string {
 }
 
 function readOpenRouterTimeoutMs(): number {
-  const rawTimeout = process.env.OPENROUTER_TIMEOUT_MS;
-  const parsedTimeout = rawTimeout ? Number(rawTimeout) : NaN;
+  return readPositiveIntegerEnv("OPENROUTER_TIMEOUT_MS", DEFAULT_OPENROUTER_TIMEOUT_MS);
+}
 
-  if (Number.isFinite(parsedTimeout) && parsedTimeout > 0) {
-    return parsedTimeout;
+function readOpenRouterMaxTokens(): number {
+  return readPositiveIntegerEnv("OPENROUTER_MAX_TOKENS", DEFAULT_OPENROUTER_MAX_TOKENS);
+}
+
+function readPositiveIntegerEnv(name: string, fallback: number): number {
+  const rawValue = process.env[name];
+  const parsedValue = rawValue ? Number(rawValue) : NaN;
+
+  if (Number.isInteger(parsedValue) && parsedValue > 0) {
+    return parsedValue;
   }
 
-  return DEFAULT_OPENROUTER_TIMEOUT_MS;
+  return fallback;
 }
 
 function buildOpenRouterHeaders(apiKey: string): Record<string, string> {

@@ -82,7 +82,8 @@ Add or document these OpenRouter-focused environment values:
 
 - `OPENROUTER_API_KEY`: enables OpenRouter.
 - `OPENROUTER_MODEL`: single primary model. Default remains a fast Gemini Flash model unless overridden.
-- `OPENROUTER_TIMEOUT_MS`: request timeout. Default is `12000`.
+- `OPENROUTER_TIMEOUT_MS`: request timeout. Default is `20000`.
+- `OPENROUTER_MAX_TOKENS`: generated token cap. Default is `2500`.
 - `OPENROUTER_REFERER`: explicit referer. If unset, use `APP_URL`; if `APP_URL` is unset, use `http://localhost:3000`.
 - `OPENROUTER_TITLE`: site title. If unset, use `CTO Simulator`.
 
@@ -100,6 +101,7 @@ For JSON routes, use structured outputs:
     { "role": "user", "content": "..." }
   ],
   "temperature": 1,
+  "max_tokens": 2500,
   "response_format": {
     "type": "json_schema",
     "json_schema": {
@@ -130,7 +132,7 @@ The adapter will translate the Gemini-style schema objects currently built with 
 
 The OpenRouter adapter should fail quickly and clearly.
 
-- Timeout default: `12000ms`.
+- Timeout default: `20000ms`.
 - Retry once for likely transient statuses: `429`, `502`, `503`, `504`.
 - Do not retry schema or prompt errors such as `400`, `401`, `403`, or `404`.
 - Log model, status, duration, retry count, and whether structured output was used.

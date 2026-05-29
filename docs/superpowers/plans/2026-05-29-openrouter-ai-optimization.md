@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace the latency-heavy OpenRouter fallback loop with a fast single-path adapter that uses structured JSON output, bounded timeouts, and at most one transient retry.
+**Goal:** Replace the latency-heavy OpenRouter fallback loop with a fast single-path adapter that uses structured JSON output, bounded timeouts, a generated-token cap, and at most one transient retry.
 
 **Architecture:** Keep the existing `getGeminiClient()` and `ai.models.generateContent(...)` contract so the four API routes stay stable. Refactor the OpenRouter branch inside `lib/gemini.ts` into typed helpers for prompt normalization, Gemini-schema conversion, request construction, timeout handling, transient retry, and response normalization. Update env/docs so OpenRouter users know the fast-path configuration knobs.
 
@@ -17,8 +17,8 @@ This plan implements one subsystem: the OpenRouter AI adapter and its usage docu
 ## File Structure
 
 - Modify `lib/gemini.ts`: owns the Gemini/OpenRouter client selection and the OpenRouter-compatible `generateContent` adapter.
-- Modify `.env.example`: documents OpenRouter fast-path environment variables.
-- Modify `README.md`: documents Gemini and OpenRouter setup.
+- Modify `.env.example`: documents OpenRouter fast-path environment variables, including `OPENROUTER_MAX_TOKENS`.
+- Modify `README.md`: documents Gemini and OpenRouter setup, including the generated-token cap.
 - Do not modify `app/api/*/route.ts`: route prompts and schemas remain compatible with the existing `generateContent` shape.
 - Do not touch the untracked `bun.lock` file unless the user separately asks for lockfile cleanup.
 
@@ -116,9 +116,17 @@ type OpenRouterResponse = {
   }>;
 };
 
+type OpenRouterRawResponse = {
+  ok: boolean;
+  status: number;
+  bodyText: string;
+};
+
 const OPENROUTER_CHAT_COMPLETIONS_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_OPENROUTER_MODEL = "google/gemini-2.5-flash";
-const DEFAULT_OPENROUTER_TIMEOUT_MS = 12000;
+const DEFAULT_OPENROUTER_TIMEOUT_MS = 20000;
+const DEFAULT_OPENROUTER_MAX_TOKENS = 2500;
+const MAX_LOG_TEXT_LENGTH = 1000;
 const OPENROUTER_RETRY_DELAY_MS = 300;
 const TRANSIENT_OPENROUTER_STATUSES = new Set([429, 502, 503, 504]);
 
@@ -137,7 +145,7 @@ class OpenRouterHttpError extends Error {
   body: string;
 
   constructor(status: number, body: string) {
-    super(`OpenRouter request failed with status ${status}: ${body}`);
+    super(`OpenRouter request failed with status ${status}: ${truncateForLog(body)}`);
     this.name = "OpenRouterHttpError";
     this.status = status;
     this.body = body;
@@ -163,6 +171,7 @@ async function executeOpenRouterCall(params: GenerateContentParams, apiKey: stri
     model,
     messages: buildMessages(params),
     temperature: params.config?.temperature ?? 1.0,
+    max_tokens: readOpenRouterMaxTokens(),
     stream: false,
   };
 
@@ -174,7 +183,7 @@ async function executeOpenRouterCall(params: GenerateContentParams, apiKey: stri
     const startedAt = Date.now();
 
     try {
-      const response = await fetchWithTimeout(
+      const response = await fetchOpenRouterResponse(
         OPENROUTER_CHAT_COMPLETIONS_URL,
         {
           method: "POST",
@@ -188,11 +197,10 @@ async function executeOpenRouterCall(params: GenerateContentParams, apiKey: stri
       const durationMs = Date.now() - startedAt;
 
       if (!response.ok) {
-        const errorBody = await response.text();
-        throw new OpenRouterHttpError(response.status, errorBody);
+        throw new OpenRouterHttpError(response.status, response.bodyText);
       }
 
-      const result = (await response.json()) as OpenRouterResponse;
+      const result = parseOpenRouterResponse(response.bodyText);
       let text = extractAssistantText(result);
 
       if (!text.trim()) {
@@ -237,14 +245,22 @@ function resolveOpenRouterModel(): string {
 }
 
 function readOpenRouterTimeoutMs(): number {
-  const rawTimeout = process.env.OPENROUTER_TIMEOUT_MS;
-  const parsedTimeout = rawTimeout ? Number(rawTimeout) : NaN;
+  return readPositiveIntegerEnv("OPENROUTER_TIMEOUT_MS", DEFAULT_OPENROUTER_TIMEOUT_MS);
+}
 
-  if (Number.isFinite(parsedTimeout) && parsedTimeout > 0) {
-    return parsedTimeout;
+function readOpenRouterMaxTokens(): number {
+  return readPositiveIntegerEnv("OPENROUTER_MAX_TOKENS", DEFAULT_OPENROUTER_MAX_TOKENS);
+}
+
+function readPositiveIntegerEnv(name: string, fallback: number): number {
+  const rawValue = process.env[name];
+  const parsedValue = rawValue ? Number(rawValue) : NaN;
+
+  if (Number.isInteger(parsedValue) && parsedValue > 0) {
+    return parsedValue;
   }
 
-  return DEFAULT_OPENROUTER_TIMEOUT_MS;
+  return fallback;
 }
 
 function buildOpenRouterHeaders(apiKey: string): Record<string, string> {
@@ -401,15 +417,21 @@ function parseNumericSchemaValue(value: string | undefined): number | undefined 
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+async function fetchOpenRouterResponse(url: string, init: RequestInit, timeoutMs: number): Promise<OpenRouterRawResponse> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    return await fetch(url, {
+    const response = await fetch(url, {
       ...init,
       signal: controller.signal,
     });
+
+    return {
+      ok: response.ok,
+      status: response.status,
+      bodyText: await response.text(),
+    };
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
       throw new Error(`OpenRouter request timed out after ${timeoutMs}ms.`);
@@ -418,6 +440,14 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: numbe
     throw error;
   } finally {
     clearTimeout(timeout);
+  }
+}
+
+function parseOpenRouterResponse(text: string): OpenRouterResponse {
+  try {
+    return JSON.parse(text) as OpenRouterResponse;
+  } catch {
+    throw new Error(`OpenRouter returned invalid JSON: ${truncateForLog(text)}`);
   }
 }
 
@@ -442,7 +472,7 @@ function ensureJsonText(text: string): string {
     JSON.parse(cleaned);
     return cleaned;
   } catch {
-    throw new Error(`Could not extract valid JSON from OpenRouter response: ${text}`);
+    throw new Error(`Could not extract valid JSON from OpenRouter response: ${truncateForLog(text)}`);
   }
 }
 
@@ -493,6 +523,14 @@ function isValidJson(text: string): boolean {
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function truncateForLog(text: string): string {
+  if (text.length <= MAX_LOG_TEXT_LENGTH) {
+    return text;
+  }
+
+  return `${text.slice(0, MAX_LOG_TEXT_LENGTH)}... [truncated ${text.length - MAX_LOG_TEXT_LENGTH} chars]`;
 }
 
 function delay(ms: number): Promise<void> {
@@ -589,7 +627,10 @@ OPENROUTER_API_KEY=""
 OPENROUTER_MODEL="google/gemini-2.5-flash"
 
 # OPENROUTER_TIMEOUT_MS: Optional. Per-request timeout for OpenRouter calls.
-OPENROUTER_TIMEOUT_MS="12000"
+OPENROUTER_TIMEOUT_MS="20000"
+
+# OPENROUTER_MAX_TOKENS: Optional. Caps generated response size for speed and cost control.
+OPENROUTER_MAX_TOKENS="2500"
 
 # OPENROUTER_REFERER: Optional. Site URL sent to OpenRouter for app attribution.
 # Defaults to APP_URL, then http://localhost:3000.
@@ -640,11 +681,13 @@ Recommended fast-path settings:
 ```dotenv
 OPENROUTER_API_KEY="YOUR_OPENROUTER_KEY"
 OPENROUTER_MODEL="google/gemini-2.5-flash"
-OPENROUTER_TIMEOUT_MS="12000"
+OPENROUTER_TIMEOUT_MS="20000"
+OPENROUTER_MAX_TOKENS="2500"
 OPENROUTER_TITLE="CTO Simulator"
 ```
 
 The OpenRouter adapter uses one configured model per request, structured JSON output for game API responses, and a bounded timeout so gameplay does not stall behind broad model fallback loops.
+It also caps generated tokens by default to avoid slow or unexpectedly expensive completions.
 ```
 
 - [ ] **Step 3: Run lint after docs/config updates**
