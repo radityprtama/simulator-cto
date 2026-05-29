@@ -1,28 +1,20 @@
 import type { Metadata } from 'next';
-import { Space_Grotesk, Rubik, JetBrains_Mono, Geist } from 'next/font/google';
+import { DM_Sans, Lora } from 'next/font/google';
 import Script from 'next/script';
 import './globals.css'; // Global styles
 import { GameProvider } from '@/hooks/use-game-store';
 import { cn } from "@/lib/utils";
 
-const geist = Geist({subsets:['latin'],variable:'--font-sans'});
-
-const spaceGrotesk = Space_Grotesk({
+const dmSans = DM_Sans({
   subsets: ['latin'],
-  variable: '--font-space-grotesk',
+  variable: '--font-dm-sans',
   weight: ['400', '500', '600', '700'],
 });
 
-const rubik = Rubik({
+const lora = Lora({
   subsets: ['latin'],
-  variable: '--font-rubik',
-  weight: ['400', '500', '600', '700'],
-});
-
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ['latin'],
-  variable: '--font-mono',
-  weight: ['400', '700'],
+  variable: '--font-lora',
+  style: ['normal', 'italic'],
 });
 
 export const metadata: Metadata = {
@@ -32,7 +24,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={cn(spaceGrotesk.variable, rubik.variable, jetbrainsMono.variable, "font-sans", geist.variable)}>
+    <html lang="en" className={cn(dmSans.variable, lora.variable, "font-sans")}>
       <head>
         <Script
           id="fetch-protect"
@@ -67,7 +59,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }}
         />
       </head>
-      <body suppressHydrationWarning className="bg-[#1f1633] text-slate-100 antialiased font-sans min-h-screen">
+      <body suppressHydrationWarning className="bg-[--canvas] text-[--ink] antialiased font-sans min-h-screen">
         <GameProvider>
           {children}
         </GameProvider>
@@ -75,4 +67,3 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     </html>
   );
 }
-
