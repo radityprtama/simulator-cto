@@ -64,9 +64,16 @@ type OpenRouterResponse = {
   }>;
 };
 
+type OpenRouterRawResponse = {
+  ok: boolean;
+  status: number;
+  bodyText: string;
+};
+
 const OPENROUTER_CHAT_COMPLETIONS_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_OPENROUTER_MODEL = "google/gemini-2.5-flash";
 const DEFAULT_OPENROUTER_TIMEOUT_MS = 12000;
+const MAX_LOG_TEXT_LENGTH = 1000;
 const OPENROUTER_RETRY_DELAY_MS = 300;
 const TRANSIENT_OPENROUTER_STATUSES = new Set([429, 502, 503, 504]);
 
@@ -85,7 +92,7 @@ class OpenRouterHttpError extends Error {
   body: string;
 
   constructor(status: number, body: string) {
-    super(`OpenRouter request failed with status ${status}: ${body}`);
+    super(`OpenRouter request failed with status ${status}: ${truncateForLog(body)}`);
     this.name = "OpenRouterHttpError";
     this.status = status;
     this.body = body;
@@ -122,7 +129,7 @@ async function executeOpenRouterCall(params: GenerateContentParams, apiKey: stri
     const startedAt = Date.now();
 
     try {
-      const response = await fetchWithTimeout(
+      const response = await fetchOpenRouterResponse(
         OPENROUTER_CHAT_COMPLETIONS_URL,
         {
           method: "POST",
@@ -136,11 +143,10 @@ async function executeOpenRouterCall(params: GenerateContentParams, apiKey: stri
       const durationMs = Date.now() - startedAt;
 
       if (!response.ok) {
-        const errorBody = await response.text();
-        throw new OpenRouterHttpError(response.status, errorBody);
+        throw new OpenRouterHttpError(response.status, response.bodyText);
       }
 
-      const result = (await response.json()) as OpenRouterResponse;
+      const result = parseOpenRouterResponse(response.bodyText);
       let text = extractAssistantText(result);
 
       if (!text.trim()) {
@@ -349,15 +355,21 @@ function parseNumericSchemaValue(value: string | undefined): number | undefined 
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+async function fetchOpenRouterResponse(url: string, init: RequestInit, timeoutMs: number): Promise<OpenRouterRawResponse> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    return await fetch(url, {
+    const response = await fetch(url, {
       ...init,
       signal: controller.signal,
     });
+
+    return {
+      ok: response.ok,
+      status: response.status,
+      bodyText: await response.text(),
+    };
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
       throw new Error(`OpenRouter request timed out after ${timeoutMs}ms.`);
@@ -366,6 +378,14 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: numbe
     throw error;
   } finally {
     clearTimeout(timeout);
+  }
+}
+
+function parseOpenRouterResponse(text: string): OpenRouterResponse {
+  try {
+    return JSON.parse(text) as OpenRouterResponse;
+  } catch {
+    throw new Error(`OpenRouter returned invalid JSON: ${truncateForLog(text)}`);
   }
 }
 
@@ -390,7 +410,7 @@ function ensureJsonText(text: string): string {
     JSON.parse(cleaned);
     return cleaned;
   } catch {
-    throw new Error(`Could not extract valid JSON from OpenRouter response: ${text}`);
+    throw new Error(`Could not extract valid JSON from OpenRouter response: ${truncateForLog(text)}`);
   }
 }
 
@@ -441,6 +461,14 @@ function isValidJson(text: string): boolean {
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function truncateForLog(text: string): string {
+  if (text.length <= MAX_LOG_TEXT_LENGTH) {
+    return text;
+  }
+
+  return `${text.slice(0, MAX_LOG_TEXT_LENGTH)}... [truncated ${text.length - MAX_LOG_TEXT_LENGTH} chars]`;
 }
 
 function delay(ms: number): Promise<void> {
