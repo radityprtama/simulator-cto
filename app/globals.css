@@ -1,125 +1,114 @@
 @import "tailwindcss";
-@import "tw-animate-css";
-@import "shadcn/tailwind.css";
-
-@custom-variant dark (&:is(.dark *));
-
-:root {
-  /* Canvas & Surface */
-  --canvas:          #FFFFFF;
-  --surface:         #F5F5F7;
-  --surface-soft:    #FAFAFA;
-  --hairline:        #E5E5E7;
-  --hairline-soft:   #F0F0F2;
-
-  /* Text */
-  --ink:             #1A1A1A;
-  --ink-strong:      #000000;
-  --primary:         #0A0A0A;
-  --on-primary:      #FFFFFF;
-  --charcoal:        #333333;
-  --slate:           #666666;
-  --steel:           #999999;
-  --stone:           #BBBBBB;
-  --muted:           #CCCCCC;
-  --footer-bg:       #0A0A0A;
-
-  /* Brand — product identity ONLY, never on buttons */
-  --coral:           #E8432D;
-  --magenta:         #D4317A;
-  --blue:            #1B6FEB;
-  --blue-deep:       #1557CC;
-  --blue-700:        #1246A8;
-  --blue-200:        #D6E4FF;
-  --cyan:            #4FBDDD;
-  --purple:          #7C3AED;
-
-  /* Semantic */
-  --success-bg:      #ECFDF5;
-  --success-text:    #065F46;
-  --error:           #D45656;
-
-  /* Scenario color encoding */
-  --scene-crisis:      var(--coral);
-  --scene-technical:   var(--blue);
-  --scene-talent:      var(--magenta);
-  --scene-political:   var(--purple);
-  --scene-opportunity: #16A34A;
-  --scene-routine:     var(--steel);
-
-  /* shadcn defaults compatible with base elements */
-  --background: var(--canvas);
-  --foreground: var(--ink);
-  --card: var(--canvas);
-  --card-foreground: var(--ink);
-  --popover: var(--canvas);
-  --popover-foreground: var(--ink);
-  --border: var(--hairline);
-  --input: var(--hairline);
-  --ring: var(--blue-deep);
-}
 
 @theme {
-  --font-sans: var(--font-dm-sans), 'Inter', 'Helvetica Neue', 'Arial', sans-serif;
-  --font-serif: var(--font-lora), 'Georgia', serif;
-  --radius-hero: 32px;
-  --letter-spacing-hero: -0.125rem;  /* -2px */
-  --letter-spacing-display: -0.09375rem; /* -1.5px */
-  --letter-spacing-tight: -0.0625rem;  /* -1px */
-  --line-height-hero: 1.10;
-
-  /* Colors mapping to css variables */
-  --color-canvas: var(--canvas);
-  --color-surface: var(--surface);
-  --color-surface-soft: var(--surface-soft);
-  --color-hairline: var(--hairline);
-  --color-hairline-soft: var(--hairline-soft);
-  --color-ink: var(--ink);
-  --color-ink-strong: var(--ink-strong);
-  --color-primary: var(--primary);
-  --color-on-primary: var(--on-primary);
-  --color-charcoal: var(--charcoal);
-  --color-slate: var(--slate);
-  --color-steel: var(--steel);
-  --color-stone: var(--stone);
-  --color-muted: var(--muted);
-  --color-footer-bg: var(--footer-bg);
-  --color-coral: var(--coral);
-  --color-magenta: var(--magenta);
-  --color-blue: var(--blue);
-  --color-blue-deep: var(--blue-deep);
-  --color-blue-700: var(--blue-700);
-  --color-blue-200: var(--blue-200);
-  --color-cyan: var(--cyan);
-  --color-purple: var(--purple);
-  --color-success-bg: var(--success-bg);
-  --color-success-text: var(--success-text);
-  --color-error: var(--error);
+  --font-mono: var(--font-mono), 'Courier New', 'Lucida Console', monospace;
+  --color-canvas: #0a0a0a;
+  --color-dim: #1a1a1a;
+  --color-amber: #ff6a00;
+  --color-amber-bright: #ff9100;
+  --color-amber-dim: #9e4200;
+  --color-bright: #eaeaea;
+  --color-standard: #b5b5b5;
+  --color-muted: #555555;
+  --color-alert: #ff3333;
+  --color-matrix: #333333;
 }
 
-@layer base {
-  body {
-    background-color: var(--canvas);
-    color: var(--ink);
-    @apply antialiased font-sans;
-  }
-  * {
-    border-color: var(--hairline);
-  }
+:root {
+  /* Core Canvas */
+  --canvas:          #0a0a0a;   /* Vacuum Black — root background */
+  --surface-dim:     #1a1a1a;   /* Console Dark — nested panels  */
+
+  /* Brand Amber — use with extreme discipline */
+  --primary:         #ff6a00;   /* Filament Amber — active only  */
+  --primary-bright:  #ff9100;   /* Overvolt — blink/critical     */
+  --primary-dim:     #9e4200;   /* Phosphor Burn — secondary ref */
+  --on-primary:      #0a0a0a;   /* Inverted text on amber fill   */
+
+  /* Frame Lines */
+  --matrix-line:     #333333;   /* Inactive ASCII borders        */
+  --matrix-active:   #ff6a00;   /* Active panel borders          */
+
+  /* Text */
+  --text-bright:     #eaeaea;   /* Primary readout               */
+  --text-standard:   #b5b5b5;   /* Telemetry, logs, body         */
+  --text-muted:      #555555;   /* Ghost — disabled, structural  */
+  --text-alert:      #ff3333;   /* Critical failure ONLY         */
 }
 
-/* Custom scrolling classes for terminal feel styled to our palette */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+* {
+  box-sizing: border-box;
+  border-radius: 0 !important;  /* Sharp corners — no exceptions */
+  cursor: default;              /* Terminal never shows pointer   */
 }
-::-webkit-scrollbar-track {
-  background: var(--surface);
+
+body {
+  background: var(--canvas);
+  color: var(--text-standard);
+  font-family: var(--font-mono), 'Courier New', monospace;
+  font-size: 14px;
+  line-height: 1.0;
+  overflow: hidden;             /* Terminal never scrolls freely */
+  -webkit-font-smoothing: none; /* Pixel-sharp raster rendering  */
+  font-smoothing: none;
 }
-::-webkit-scrollbar-thumb {
-  background: var(--hairline);
-  border-radius: 3px;
+
+/* CRT Scanline overlay — applied via ::after on <body> */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 1px,
+    rgba(0, 0, 0, 0.25) 1px,
+    rgba(0, 0, 0, 0.25) 2px
+  );
 }
-::-webkit-scrollbar-thumb:hover {
-  background: var(--steel);
+
+/* Amber blink keyframe — used on cursors + critical alerts */
+@keyframes blink {
+  0%, 49%  { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+/* Typewriter keyframe — used on boot/loading text */
+@keyframes typewrite {
+  from { width: 0; }
+  to   { width: 100%; }
+}
+
+/* Phosphor flicker — subtle screen flicker */
+@keyframes flicker {
+  0%, 97%, 100% { opacity: 1; }
+  98%           { opacity: 0.92; }
+  99%           { opacity: 0.97; }
+}
+
+html { animation: flicker 6s infinite; }
+
+.cursor-blink {
+  animation: blink 0.5s step-start infinite;
+}
+
+/* White flash effect class */
+.white-flash {
+  animation: flash 0.15s ease-out;
+}
+
+@keyframes flash {
+  0% { background-color: #ffffff; }
+  100% { background-color: #0a0a0a; }
+}
+
+/* Hide scrollbars but support scrolling inside ASCII components if needed */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
 }

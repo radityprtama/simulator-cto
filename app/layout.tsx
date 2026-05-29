@@ -1,30 +1,23 @@
 import type { Metadata } from 'next';
-import { DM_Sans, Lora } from 'next/font/google';
+import { JetBrains_Mono } from 'next/font/google';
 import Script from 'next/script';
 import './globals.css'; // Global styles
 import { GameProvider } from '@/hooks/use-game-store';
-import { cn } from "@/lib/utils";
 
-const dmSans = DM_Sans({
+const jetbrainsMono = JetBrains_Mono({
   subsets: ['latin'],
-  variable: '--font-dm-sans',
-  weight: ['400', '500', '600', '700'],
-});
-
-const lora = Lora({
-  subsets: ['latin'],
-  variable: '--font-lora',
-  style: ['normal', 'italic'],
+  variable: '--font-mono',
+  weight: ['400', '600', '700'],
 });
 
 export const metadata: Metadata = {
-  title: 'Sentinel CTO Simulator | Executive War Room',
-  description: 'Manage Budgets, Technical Debt, and Team Morale in this high-stakes CTO Strategy Game.',
+  title: 'CTO Simulator | CRT Terminal Edition',
+  description: 'Retro TUI Chief Technology Officer crisis management system.',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={cn(dmSans.variable, lora.variable, "font-sans")}>
+    <html lang="en" className={jetbrainsMono.variable}>
       <head>
         <Script
           id="fetch-protect"
@@ -59,7 +52,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }}
         />
       </head>
-      <body suppressHydrationWarning className="bg-[--canvas] text-[--ink] antialiased font-sans min-h-screen">
+      <body suppressHydrationWarning>
         <GameProvider>
           {children}
         </GameProvider>

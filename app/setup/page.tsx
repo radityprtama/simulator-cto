@@ -3,17 +3,19 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useGameStore } from "@/hooks/use-game-store";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { MetricBar } from "@/components/metric-bar";
-import { ExpandableText } from "@/components/expandable-text";
-import { Check } from "lucide-react";
+import {
+  AsciiBox,
+  AsciiBar,
+  PromptButton,
+  StatusBadge,
+  TerminalInput,
+  TypewriterText,
+  ScanlinePanel,
+} from "@/components/retro-tui";
 
 interface Industry {
   id: string;
   name: string;
-  emoji: string;
   desc: string;
   expect: string;
 }
@@ -23,438 +25,551 @@ interface Stage {
   name: string;
   headcount: string;
   desc: string;
-  badgeColor: string;
   metrics: {
     budget: number;
     teamMorale: number;
     technicalDebt: number;
     productVelocity: number;
-    securityPosture: number;
+    ceoRelationship: number;
     talentPipeline: number;
   };
 }
 
 const industries: Industry[] = [
-  { id: "Healthcare", name: "Healthcare", emoji: "🏥", desc: "HIPAA, EMRs, life-critical code", expect: "Expect heavy feature pressure from clinical safety protocols and sensitive HIPAA patient data privacy audits." },
-  { id: "GovTech", name: "GovTech", emoji: "🏛️", desc: "Procurement hell, legacy systems", expect: "Sluggish speed. Product decisions must pass through multi-layered agency reviews while navigating ancient mainframe integrations." },
-  { id: "SaaS / B2B", name: "SaaS / B2B", emoji: "☁️", desc: "SLAs, enterprise deals, velocity", expect: "High contract pressure. Enterprise client deals require custom APIs, zero downtime, and strict SLA compliance." },
-  { id: "E-Commerce", name: "E-Commerce", emoji: "🛒", desc: "Traffic spikes, payments, scale", expect: "Scalability test. Traffic surges during sales events will stress checkout databases and payment processor handshakes." },
-  { id: "Fintech", name: "Fintech", emoji: "💳", desc: "PCI-DSS, fraud, regulators", expect: "PCI compliance, high-availability ledger databases, and absolute zero-fault tolerance for security bugs." },
-  { id: "EdTech", name: "EdTech", emoji: "🎓", desc: "School districts, seasonal load", expect: "Classroom load spikes. Massive seasonal surges when schools reopen will push low-margin servers to their limits." },
-  { id: "AI / ML", name: "AI / ML", emoji: "🤖", desc: "GPU costs, model drift, hype", expect: "Blazing fast velocity, but a massive pile of hacky Python code. GPU cloud bills will burn runway rapidly." },
-  { id: "Cybersecurity", name: "Cybersecurity", emoji: "🔐", desc: "SOC2, zero-days, trust at stake", expect: "SOC2 compliance, zero-day threat responses, and retaining client data trust are critical operational hazards." },
-  { id: "Logistics", name: "Logistics", emoji: "🚚", desc: "3PL APIs, real-time, breakage", expect: "API integration hell. Managing third-party carrier syncs, warehouse endpoints, and physical package breakage events." },
-  { id: "PropTech", name: "PropTech", emoji: "🏗️", desc: "MLS data, licensing disputes", expect: "Data quality concerns. Legacy MLS data pipelines are brittle; agent licensing dynamics introduce legal constraints." },
-  { id: "BioTech", name: "BioTech", emoji: "🧬", desc: "FDA audits, research pipelines", expect: "Validation bottlenecks. Scientific trials and regulatory approvals stall production velocity; hardware security is key." },
-  { id: "Gaming", name: "Gaming", emoji: "🎮", desc: "Live ops, angry players, patches", expect: "High emotional volatility. Discontented players on social channels and live-ops outages require rapid deployment loops." },
-  { id: "InsurTech", name: "InsurTech", emoji: "🏦", desc: "Actuarial data, carrier APIs", expect: "Legacy carrier interfaces. Underwriting engines rely on complex actuarial models that resist agile iteration." },
-  { id: "CleanTech", name: "CleanTech", emoji: "🌱", desc: "IoT, hardware, slow capital", expect: "Capital-intensive. Slow hardware development loop combined with IoT fleet connection drops and physical sensor lag." },
-  { id: "Consumer App", name: "Consumer App", emoji: "📱", desc: "App Store risk, viral scale", expect: "App Store compliance risk. A single review rejection or a sudden viral spike can bring down platform databases." },
-  { id: "Mental Health", name: "Mental Health", emoji: "💆", desc: "Privacy, clinical safety, care", expect: "Zero-error clinical safety rules. Critical data protection mechanisms required for high confidentiality care channels." },
-  { id: "LegalTech", name: "LegalTech", emoji: "🛡️", desc: "Unauthorized practice risk", expect: "Regulatory compliance risks. Generative AI lawyers require tight guardrails to avoid unauthorized legal practice claims." },
-  { id: "Manufacturing", name: "Manufacturing", emoji: "🏭", desc: "OT/IT integration, safety", expect: "Industrial network bridging. Vulnerabilities in legacy operational technology can halt physical factory floor logistics." },
-  { id: "SpaceTech", name: "SpaceTech", emoji: "🚀", desc: "Life-critical, hardware loops", expect: "Astronomical stakes. Hardware software integration requires absolute math verification; zero tolerance for run-time crashes." },
-  { id: "Data Analytics", name: "Data Analytics", emoji: "📊", desc: "Quality debt, GDPR, governance", expect: "Data swamp. Cleaning massive amounts of customer data debt while satisfying GDPR governance reviews." },
-  { id: "Media", name: "Media", emoji: "🎵", desc: "CDN costs, DRM, streaming", expect: "Bandwidth bills. Keeping content streaming costs low while preventing pirate downloads through complex DRM controls." },
-  { id: "Web3 / Crypto", name: "Web3 / Crypto", emoji: "🌐", desc: "Smart contracts, protocol risk", expect: "Mathematical auditing. Auditing smart contracts is key; any bug is permanently exploited on decentralized nodes." },
-  { id: "Surprise Me", name: "Surprise Me", emoji: "🎲", desc: "Random industry. Embrace chaos.", expect: "Prepare for pure randomness. The simulation will assign a completely randomized sector with unpredictable trade-offs." }
+  { id: "Healthcare", name: "HEALTHCARE / MEDTECH", desc: "HIPAA COMPLIANCE", expect: "[HEALTHCARE] HIPAA COMPLIANCE MANDATORY. EXPECT EMR INTEGRATIONS, PATIENT DATA AUDITS, AND REGULATORY REVIEW CYCLES EVERY QUARTER." },
+  { id: "GovTech", name: "GOVTECH / PUBLIC SECTOR", desc: "PROCUREMENT & MAINFRM", expect: "[GOVTECH] SLUGGISH VELOCITY EXPECTED. PRODUCT DECISIONS MUST PASS THROUGH MULTI-LAYERED AGENCY REVIEWS." },
+  { id: "SaaS", name: "SAAS / B2B SOFTWARE", desc: "SLAS & ENTERPRISE DEALS", expect: "[SAAS] HIGH CONTRACT PRESSURE. ENTERPRISE CLIENT DEALS REQUIRE CUSTOM APIS AND STRICT SLA COMPLIANCE." },
+  { id: "E-Commerce", name: "E-COMMERCE / MARKETPLACE", desc: "TRAFFIC SPIKES & SCAL", expect: "[E-COMMERCE] SCALABILITY TEST. TRAFFIC SURGES DURING SALES WILL STRESS CHECKOUT DATABASES." },
+  { id: "Fintech", name: "FINTECH / PAYMENTS", desc: "PCI-DSS & FRAUD REGUL", expect: "[FINTECH] PCI COMPLIANCE REQUIRED. LEDGER TRANSACTIONS DEMAND ABSOLUTE ZERO-FAULT TOLERANCE." },
+  { id: "Edtech", name: "EDTECH", desc: "SCHOOL DISTRICT LOADS", expect: "[EDTECH] CLASSROOM LOAD SPIKES. SEASONAL SURGES WHEN SCHOOLS REOPEN PUSH SERVERS TO LIMITS." },
+  { id: "AI / ML", name: "AI / ML PLATFORM", desc: "GPU BILLS & MODEL DEBT", expect: "[AI/ML] BLAZING VELOCITY BUT MASSIVE TECHNICAL DEBT. RUNWAY BURNS QUICKLY ON GPU INSTANCES." },
+  { id: "Cybersecurity", name: "CYBERSECURITY", desc: "SOC2 & ZERO-DAY THREAT", expect: "[CYBERSECURITY] SOC2 COMPLIANCE MANDATORY. INCIDENT RESOLUTION AND ZERO-DAY EVENTS ARE CRITICAL." },
+  { id: "Logistics", name: "LOGISTICS / SUPPLY CHAIN", desc: "3PL APIS & HARDR SYNC", expect: "[LOGISTICS] API INTEGRATION VOLATILITY. CARRIER SYNCS AND WAREHOUSE ENDPOINTS POSE RISKS." },
+  { id: "Proptech", name: "PROPTECH / REAL ESTATE", desc: "MLS DATA & CONTRACTS", expect: "[PROPTECH] PIPELINE INSTABILITY. MLS DATA IS BRITTLE; TRANSACTIONS REQUIRE RIGID COMPLIANCE." },
+  { id: "Biotech", name: "BIOTECH / LIFE SCIENCES", desc: "FDA & RESEARCH PIPES", expect: "[BIOTECH] RESEARCH STALLS AND SLOW ITERATION CYCLES; SYSTEM DATA ENCRYPTION SECURITY IS KEY." },
+  { id: "Gaming", name: "GAMING", desc: "LIVE OPS & PATCH LOOPS", expect: "[GAMING] HIGH VOLATILITY. SYSTEM OUTAGES SPARK DISGRUNTLED PLAYER REACTIONS ACROSS CHANNELS." },
+  { id: "Insurtech", name: "INSURTECH", desc: "ACTUARIAL DATA INTEGR", expect: "[INSURTECH] COMPLICATED ACTUARIAL CALCULATIONS AND LEGACY UNDERWRITING CODE BACKLOGS." },
+  { id: "Cleantech", name: "CLEANTECH / CLIMATE", desc: "IOT SENSORS & METRICS", expect: "[CLEANTECH] PHYSICAL SENSOR HARDWARE LAGS AND BRITTLE OUTDOOR CORE TELEMETRY PACKETS." },
+  { id: "Consumer App", name: "CONSUMER APP / SOCIAL", desc: "VIRAL SCALE & APP STO", expect: "[CONSUMER] VIRAL SCALABILITY INCIDENTS AND APP STORE REVIEW REJECTIONS THREATEN RETENTION." },
+  { id: "Mental Health", name: "MENTAL HEALTH / WELLNESS", desc: "PATIENT SECURITY & CAR", expect: "[MENTAL HEALTH] EXTENSIVE ENCRYPTION BOUNDARIES REQUIRED. ZERO-ERROR CLINICAL SAFETY COMPLIANCE." },
+  { id: "Legaltech", name: "LEGALTECH", desc: "REGULATORY COMPLIANCE", expect: "[LEGALTECH] DATA SEGREGATION AUDITS AND HIGH SECURITY COMPLIANCE REQUIREMENTS." },
+  { id: "Manufacturing", name: "MANUFACTURING / IIOT", desc: "OT NETWORK THREATS", expect: "[MANUFACTURING] VULNERABILITIES IN OPERATIONAL MAINFRM NETWORKS CAN HALT ASSEMBLY LINES." },
+  { id: "Spacetech", name: "SPACETECH / AEROSPACE", desc: "LIFE-CRITICAL CODE", expect: "[SPACETECH] LIFE-CRITICAL FLIGHT SIMULATION STAKES. ABSOLUTE SYSTEM CALCULATIONS AND VERIFICATION." },
+  { id: "Data & Analytics", name: "DATA & ANALYTICS", desc: "GDPR & QUALITY DEBT", expect: "[DATA] CLEANING DATA LAKES WHILE SATISFYING SCRUTINIZING REGULATORY AUDITS." },
+  { id: "Media & Entertainment", name: "MEDIA & ENTERTAINMENT", desc: "CDN COSTS & DRM PIPES", expect: "[MEDIA] INTENTIONAL CONTROLS FOR BANDWIDTH COST DEVIATION AND STREAM RETRIES." },
+  { id: "Surprise Me", name: "??? SURPRISE ME", desc: "RANDOM SECTOR CHAOS", expect: "[SURPRISE ME] EMBRACE OPERATIONAL CHAOS. SECTOR ASSIGNED WILL FEATURE COMPLETELY RANDOM RISK MODIFIERS." }
 ];
 
 const stages: Stage[] = [
-  { id: "Pre-Seed", name: "Pre-Seed", headcount: "1-10", desc: "Pure chaos. No process. Ship or die.", badgeColor: "bg-[--surface] text-[--steel]", metrics: { budget: 40, teamMorale: 60, technicalDebt: 25, productVelocity: 75, securityPosture: 30, talentPipeline: 30 } },
-  { id: "Seed", name: "Seed", headcount: "10-30", desc: "Finding PMF. Running on fumes and hope.", badgeColor: "bg-[--blue-200] text-[--blue-700]", metrics: { budget: 50, teamMorale: 56, technicalDebt: 42, productVelocity: 68, securityPosture: 38, talentPipeline: 45 } },
-  { id: "Series A", name: "Series A", headcount: "30-80", desc: "First real team. First real problems.", badgeColor: "bg-green-100 text-green-700", metrics: { budget: 60, teamMorale: 50, technicalDebt: 55, productVelocity: 55, securityPosture: 45, talentPipeline: 55 } },
-  { id: "Series B", name: "Series B", headcount: "80-200", desc: "Scale or die. Complexity creeping in.", badgeColor: "bg-[--coral]/10 text-[--coral]", metrics: { budget: 65, teamMorale: 42, technicalDebt: 70, productVelocity: 48, securityPosture: 50, talentPipeline: 38 } },
-  { id: "Series C+", name: "Series C+", headcount: "200+", desc: "Politics, process, slowing velocity.", badgeColor: "bg-[--purple]/10 text-[--purple]", metrics: { budget: 75, teamMorale: 38, technicalDebt: 82, productVelocity: 35, securityPosture: 65, talentPipeline: 65 } },
-  { id: "Bootstrap", name: "Bootstrap", headcount: "10-50", desc: "Profitable but lean. Every dollar counts.", badgeColor: "bg-amber-100 text-amber-700", metrics: { budget: 80, teamMorale: 65, technicalDebt: 48, productVelocity: 62, securityPosture: 42, talentPipeline: 40 } },
+  { id: "Pre-Seed", name: "PRE-SEED / MVP", headcount: "1–10", desc: '"PURE CHAOS. NO PROCESS. SHIP OR DIE."', metrics: { budget: 40, teamMorale: 60, technicalDebt: 25, productVelocity: 75, ceoRelationship: 50, talentPipeline: 30 } },
+  { id: "Seed", name: "SEED", headcount: "10–30", desc: '"FINDING PMF. RUNNING ON FUMES AND HOPE."', metrics: { budget: 50, teamMorale: 56, technicalDebt: 42, productVelocity: 68, ceoRelationship: 55, talentPipeline: 45 } },
+  { id: "Series A", name: "SERIES A", headcount: "30–80", desc: '"FIRST REAL TEAM. FIRST REAL PROBLEMS."', metrics: { budget: 60, teamMorale: 50, technicalDebt: 55, productVelocity: 55, ceoRelationship: 58, talentPipeline: 55 } },
+  { id: "Series B", name: "SERIES B (DEFAULT)", headcount: "80–200", desc: '"SCALE OR DIE. COMPLEXITY CREEPING IN."', metrics: { budget: 65, teamMorale: 42, technicalDebt: 70, productVelocity: 48, ceoRelationship: 60, talentPipeline: 38 } },
+  { id: "Series C+", name: "SERIES C+ / GROWTH", headcount: "200+", desc: '"POLITICS, PROCESS, SLOWING VELOCITY."', metrics: { budget: 75, teamMorale: 38, technicalDebt: 82, productVelocity: 35, ceoRelationship: 62, talentPipeline: 65 } },
+  { id: "Bootstrap", name: "BOOTSTRAPPED", headcount: "10–50", desc: '"PROFITABLE BUT LEAN. EVERY DOLLAR COUNTS."', metrics: { budget: 80, teamMorale: 65, technicalDebt: 48, productVelocity: 62, ceoRelationship: 55, talentPipeline: 40 } }
 ];
 
 export default function SetupPage() {
   const router = useRouter();
   const { initializeGame } = useGameStore();
 
-  const [step, setStep] = useState<number>(1);
-  const [playerName, setPlayerName] = useState<string>("Alex Chen");
-  const [companyName, setCompanyName] = useState<string>("");
-  const [selectedIndustry, setSelectedIndustry] = useState<Industry | null>(null);
-  const [selectedStage, setSelectedStage] = useState<Stage>(stages[3]); // Default Series B
+  const [step, setStep] = useState(1);
+  const [operatorName, setOperatorName] = useState("Alex Chen");
+  const [companyName, setCompanyName] = useState("");
+  const [industryIndex, setIndustryIndex] = useState(0); // For grid navigation in Step 2
+  const [stageIndex, setStageIndex] = useState(3); // Default Series B index 3
   const [errorText, setErrorText] = useState<string | null>(null);
 
-  // Loading Screen Terminal States
-  const [isGenerating, setIsGenerating] = useState<boolean>(false);
-  const [terminalLines, setTerminalLines] = useState<string[]>([]);
+  // Loading TUI state
+  const [isLoadingAnimation, setIsLoadingAnimation] = useState(false);
+  const [bootLogs, setBootLogs] = useState<string[]>([]);
+  const [bootFinished, setBootFinished] = useState(false);
+  const [flashing, setFlashing] = useState(false);
 
-  const nameChips = ["NovaCorp", "Helix AI", "Stackly", "Prism", "Foundry", "Axon"];
+  // Preset companies
+  const presetCompanies = ["NOVACORP", "HELIX AI", "STACKLY", "PRISM", "FOUNDRY"];
 
-  const handleSurpriseMe = () => {
-    // Exclude Surprise Me card itself
-    const options = industries.filter((ind) => ind.id !== "Surprise Me");
-    const randomIdx = Math.floor(Math.random() * options.length);
-    setSelectedIndustry(options[randomIdx]);
-    setErrorText(null);
-  };
-
-  const handleNext = () => {
-    if (step === 1) {
-      if (!companyName.trim()) {
-        setErrorText("Company name is required.");
+  useEffect(() => {
+    // Keyboard navigation based on active step
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (isLoadingAnimation) {
+        if (bootFinished) {
+          // Any key triggers flash and router push
+          e.preventDefault();
+          handleFlashAndRoute();
+        }
         return;
       }
-      setErrorText(null);
-      setStep(2);
-    } else if (step === 2) {
-      if (!selectedIndustry) {
-        setErrorText("Please select your company's industry.");
+
+      if (e.key === "Escape") {
+        e.preventDefault();
+        if (step > 1) {
+          setErrorText(null);
+          setStep((prev) => prev - 1);
+        } else {
+          router.push("/");
+        }
         return;
       }
-      setErrorText(null);
-      setStep(3);
-    }
-  };
 
-  const handleBack = () => {
-    setErrorText(null);
-    setStep((prev) => prev - 1);
-  };
+      // Step 2 Industry selection keyboard control
+      if (step === 2) {
+        const rows = 11;
+        const cols = 2;
+        const totalItems = industries.length;
 
-  const handleLaunch = async () => {
-    setIsGenerating(true);
-    setTerminalLines([]);
+        if (e.key === "ArrowDown" || e.key === "s" || e.key === "S") {
+          e.preventDefault();
+          setIndustryIndex((prev) => (prev + cols) % totalItems);
+        } else if (e.key === "ArrowUp" || e.key === "w" || e.key === "W") {
+          e.preventDefault();
+          setIndustryIndex((prev) => (prev - cols + totalItems) % totalItems);
+        } else if (e.key === "ArrowRight" || e.key === "d" || e.key === "D") {
+          e.preventDefault();
+          setIndustryIndex((prev) => (prev % cols === 0 ? prev + 1 : prev - 1));
+        } else if (e.key === "ArrowLeft" || e.key === "a" || e.key === "A") {
+          e.preventDefault();
+          setIndustryIndex((prev) => (prev % cols === 1 ? prev - 1 : prev + 1));
+        } else if (e.key === "Enter") {
+          e.preventDefault();
+          handleConfirmIndustry();
+        }
+      }
 
-    const payload = {
-      companyName: companyName.trim(),
-      industry: selectedIndustry?.id === "Surprise Me" ? industries[Math.floor(Math.random() * (industries.length - 1))].id : selectedIndustry?.id,
-      companyStage: selectedStage.id,
-      playerName: playerName.trim() || "Alex Chen",
+      // Step 3 Stage selection keyboard control
+      if (step === 3) {
+        const totalStages = stages.length;
+        if (e.key === "ArrowDown" || e.key === "s" || e.key === "S") {
+          e.preventDefault();
+          setStageIndex((prev) => (prev + 1) % totalStages);
+        } else if (e.key === "ArrowUp" || e.key === "w" || e.key === "W") {
+          e.preventDefault();
+          setStageIndex((prev) => (prev - 1 + totalStages) % totalStages);
+        } else if (e.key === "Enter") {
+          e.preventDefault();
+          handleLaunchSimulation();
+        }
+      }
     };
 
-    // Call API in background
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [step, industryIndex, stageIndex, isLoadingAnimation, bootFinished, companyName, operatorName]);
+
+  const handleConfirmIdentity = () => {
+    if (!companyName.trim()) {
+      setErrorText("COMPANY NAME REQUIRED.");
+      return;
+    }
+    if (companyName.trim().length < 2) {
+      setErrorText("COMPANY NAME MUST BE AT LEAST 2 CHARACTERS.");
+      return;
+    }
+    setErrorText(null);
+    setStep(2);
+  };
+
+  const handleConfirmIndustry = () => {
+    setErrorText(null);
+    setStep(3);
+  };
+
+  const handleLaunchSimulation = () => {
+    setIsLoadingAnimation(true);
+    setErrorText(null);
+
+    // Call API background config builder
+    const finalIndustry = industries[industryIndex].id === "Surprise Me" 
+      ? industries[Math.floor(Math.random() * (industries.length - 1))].id 
+      : industries[industryIndex].id;
+
+    const payload = {
+      companyName: companyName.trim().toUpperCase(),
+      industry: finalIndustry,
+      companyStage: stages[stageIndex].id,
+      playerName: operatorName.trim() || "Operator",
+    };
+
     const apiPromise = fetch("/api/create-company", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     }).then(async (res) => {
-      if (!res.ok) {
-        throw new Error("Failed to configure simulation workspace.");
-      }
+      if (!res.ok) throw new Error("Simulation workspace build failed.");
       return res.json();
     });
 
-    const lines = [
-      `> Incorporating ${companyName}...`,
-      `> Assembling engineering team...`,
-      `> Loading technical debt...`,
-      `> Briefing your CEO...`,
-      `> Scheduling a crisis for week 2...`,
-      `> Your calendar is now full.`,
-      `——`,
-      `> Welcome, ${playerName.trim() || "Alex Chen"}. Try not to get fired.`,
+    const logs = [
+      `INITIALIZING ${companyName.trim().toUpperCase()} ENTERPRISE SYSTEMS...`,
+      "",
+      "REGISTERING COMPANY................. [OK]",
+      "BUILDING ENGINEERING TEAM........... [OK]",
+      "DEPLOYING TECHNICAL DEBT............ [OK]",
+      "CALIBRATING CEO PARANOIA............ [OK]",
+      "GENERATING CRISIS QUEUE............. [OK]",
+      "PLANTING DISGRUNTLED ENGINEERS...... [OK]",
+      "SCHEDULING OUTAGE FOR WEEK 3........ [OK]",
+      "",
+      "════════════════════════════════════════════",
+      `${companyName.trim().toUpperCase()} OPERATIONAL. GOOD LUCK, ${operatorName.trim().toUpperCase()}.`,
+      "════════════════════════════════════════════",
+      "",
+      "PRESS ANY KEY TO CONTINUE_",
     ];
 
-    // Show typewriter lines with 400ms delay
-    for (let i = 0; i < lines.length; i++) {
-      setTerminalLines((prev) => [...prev, lines[i]]);
-      await new Promise((resolve) => setTimeout(resolve, 400));
-    }
+    // Reveal boot logs
+    let index = 0;
+    const interval = setInterval(() => {
+      if (index < logs.length) {
+        setBootLogs((prev) => [...prev, logs[index]]);
+        index++;
+      } else {
+        clearInterval(interval);
+        setBootFinished(true);
 
-    // 600ms pause and route
-    try {
-      const generatedData = await apiPromise;
-      await new Promise((resolve) => setTimeout(resolve, 600));
-      initializeGame(generatedData);
+        // Preload layout data in store
+        apiPromise.then((data) => {
+          (window as any)._preloadedData = data;
+        }).catch((err) => {
+          console.error("API preloading error:", err);
+        });
+      }
+    }, 200);
+  };
+
+  const handleFlashAndRoute = () => {
+    setFlashing(true);
+    setTimeout(() => {
+      const data = (window as any)._preloadedData;
+      if (data) {
+        initializeGame(data);
+      } else {
+        // Fallback if promise not completed
+        initializeGame({
+          company: {
+            name: companyName.trim().toUpperCase(),
+            stage: stages[stageIndex].id + " Stage",
+            headcount: parseInt(stages[stageIndex].headcount.split("–")[0]) || 50,
+            quarter: "Q3 2026",
+            week: 1,
+            playerName: operatorName,
+            industry: industries[industryIndex].id
+          },
+          metrics: {
+            budget: stages[stageIndex].metrics.budget,
+            teamMorale: stages[stageIndex].metrics.teamMorale,
+            technicalDebt: stages[stageIndex].metrics.technicalDebt,
+            productVelocity: stages[stageIndex].metrics.productVelocity,
+            ceoRelationship: stages[stageIndex].metrics.ceoRelationship,
+            customerSatisfaction: 60,
+            securityPosture: 50,
+            talentPipeline: stages[stageIndex].metrics.talentPipeline
+          },
+          activeFlags: ["legacy_system_friction"],
+          recentDecisions: [],
+          companyMood: "stable"
+        });
+      }
       router.push("/game");
-    } catch (err) {
-      console.error(err);
-      setIsGenerating(false);
-      setErrorText("Connection error occurred. Please try launching again.");
-    }
+    }, 150);
   };
 
-  // Determine brand color for loading badge based on industry
-  const getBrandColor = () => {
-    if (!selectedIndustry) return "bg-[--primary]";
-    const id = selectedIndustry.id.toLowerCase();
-    if (id.includes("ai") || id.includes("cyber")) return "bg-[--purple]";
-    if (id.includes("fintech") || id.includes("saas")) return "bg-[--blue]";
-    if (id.includes("health") || id.includes("bio")) return "bg-[--magenta]";
-    return "bg-[--coral]";
-  };
+  const selectedStage = stages[stageIndex];
+  const progressRatio = step === 1 ? 8 : step === 2 ? 16 : 30;
+  const progressPercentText = step === 1 ? "1 OF 3" : step === 2 ? "2 OF 3" : "3 OF 3";
 
+  // Render setup screens
   return (
-    <main className="bg-[--canvas] min-h-screen font-sans flex flex-col justify-start relative select-none">
+    <main className={`bg-[var(--canvas)] min-h-screen flex flex-col items-center justify-center p-4 relative select-none ${flashing ? "white-flash" : ""}`}>
       
-      {/* LOADING SCREEN */}
-      {isGenerating && (
-        <div className="bg-[--primary] fixed inset-0 z-50 flex flex-col items-center justify-center p-6 animate-in fade-in duration-200">
-          <div className="text-[40px] font-semibold text-white leading-[1.1] tracking-[-1px] text-center max-w-[500px]">
-            {companyName}
-          </div>
-          <Badge className={`mt-4 rounded-full text-sm font-semibold px-4 py-1.5 border-0 text-white ${getBrandColor()}/80`}>
-            {selectedIndustry?.name}
-          </Badge>
-
-          <div className="mt-10 bg-white/5 border border-white/10 rounded-[20px] p-6 w-full max-w-[400px] font-mono text-sm text-white/70">
-            {terminalLines.map((line, idx) => (
-              <div key={idx} className="min-h-[20px] leading-relaxed">
-                {line}
+      {isLoadingAnimation ? (
+        /* LOADING / BOOT SCREEN */
+        <div className="w-full max-w-[120ch] min-h-[30ch] flex flex-col justify-start">
+          <pre className="font-mono text-left whitespace-pre-wrap leading-tight text-[var(--text-standard)]">
+            {bootLogs.map((line, idx) => (
+              <div key={idx} className="min-h-[1.2em]">
+                {line === "PRESS ANY KEY TO CONTINUE_" && bootFinished ? (
+                  <span>
+                    PRESS ANY KEY TO CONTINUE<span className="text-[var(--primary)] cursor-blink">_</span>
+                  </span>
+                ) : (
+                  line
+                )}
               </div>
             ))}
-          </div>
+          </pre>
         </div>
-      )}
-
-      {/* SETUP WIZARD VIEW */}
-      <div className="max-w-[680px] mx-auto px-6 py-12 w-full flex flex-col justify-between h-full flex-grow">
-        
-        {/* STEP INDICATOR */}
-        <div className="flex flex-col items-center mb-12">
-          <div className="flex items-center justify-center">
-            {/* Step 1 */}
-            <div className="flex flex-col items-center">
-              <div className={`w-[28px] h-[28px] rounded-full flex items-center justify-center text-xs font-semibold ${
-                step === 1
-                  ? "bg-[--primary] text-white"
-                  : step > 1
-                  ? "bg-[--primary] text-white"
-                  : "bg-[--surface] border border-[--hairline] text-[--steel]"
-              }`}>
-                {step > 1 ? <Check className="w-3.5 h-3.5" /> : "1"}
-              </div>
-              <span className={`text-xs mt-1.5 text-center ${step === 1 ? "text-[--ink] font-medium" : "text-[--steel]"}`}>
-                Identity
-              </span>
-            </div>
-
-            {/* Connector 1 */}
-            <div className={`h-px w-16 mx-1 ${step >= 2 ? "bg-[--primary]" : "bg-[--hairline]"}`} />
-
-            {/* Step 2 */}
-            <div className="flex flex-col items-center">
-              <div className={`w-[28px] h-[28px] rounded-full flex items-center justify-center text-xs font-semibold ${
-                step === 2
-                  ? "bg-[--primary] text-white"
-                  : step > 2
-                  ? "bg-[--primary] text-white"
-                  : "bg-[--surface] border border-[--hairline] text-[--steel]"
-              }`}>
-                {step > 2 ? <Check className="w-3.5 h-3.5" /> : "2"}
-              </div>
-              <span className={`text-xs mt-1.5 text-center ${step === 2 ? "text-[--ink] font-medium" : "text-[--steel]"}`}>
-                Industry
-              </span>
-            </div>
-
-            {/* Connector 2 */}
-            <div className={`h-px w-16 mx-1 ${step >= 3 ? "bg-[--primary]" : "bg-[--hairline]"}`} />
-
-            {/* Step 3 */}
-            <div className="flex flex-col items-center">
-              <div className={`w-[28px] h-[28px] rounded-full flex items-center justify-center text-xs font-semibold ${
-                step === 3
-                  ? "bg-[--primary] text-white"
-                  : "bg-[--surface] border border-[--hairline] text-[--steel]"
-              }`}>
-                "3"
-              </div>
-              <span className={`text-xs mt-1.5 text-center ${step === 3 ? "text-[--ink] font-medium" : "text-[--steel]"}`}>
-                Stage
-              </span>
-            </div>
+      ) : (
+        /* WIZARD CONTAINER */
+        <div className="w-full max-w-[90ch] flex flex-col gap-6">
+          
+          {/* Header Banners */}
+          <div className="text-center font-mono text-[var(--primary)] leading-[1.1] mb-2">
+            {step === 1 && (
+              <pre className="whitespace-pre">
+                ╔══════════════════════════════════════════════════════════╗<br />
+                ║        ENTERPRISE PROFILE CONFIGURATION // STEP 1/3      ║<br />
+                ╚══════════════════════════════════════════════════════════╝
+              </pre>
+            )}
+            {step === 2 && (
+              <pre className="whitespace-pre">
+                ╔══════════════════════════════════════════════════════════╗<br />
+                ║         SECTOR CLASSIFICATION MODULE // STEP 2/3         ║<br />
+                ╚══════════════════════════════════════════════════════════╝
+              </pre>
+            )}
+            {step === 3 && (
+              <pre className="whitespace-pre">
+                ╔══════════════════════════════════════════════════════════╗<br />
+                ║         OPERATIONAL STAGE CLASSIFICATION // STEP 3/3     ║<br />
+                ╚══════════════════════════════════════════════════════════╝
+              </pre>
+            )}
           </div>
-        </div>
 
-        {/* STEP 1: IDENTITY */}
-        {step === 1 && (
-          <div className="animate-in fade-in slide-in-from-right-4 duration-300">
-            <h1 className="text-[32px] font-semibold leading-[1.25] tracking-[-0.5px] text-[--ink]">
-              Let's build your company.
-            </h1>
-            <p className="text-[--slate] text-base mt-2 leading-relaxed">
-              You're stepping in as the new CTO. First, tell us who you are.
-            </p>
+          {/* Wizard Progress Bar */}
+          <div className="flex items-center gap-3 font-mono text-xs text-[var(--text-standard)]">
+            <span>[</span>
+            <span className="text-[var(--primary)] font-bold">
+              {"█".repeat(progressRatio)}{"░".repeat(30 - progressRatio)}
+            </span>
+            <span>]</span>
+            <span>STEP {progressPercentText}</span>
+          </div>
 
-            <div className="mt-8 space-y-6">
-              <div>
-                <label className="text-sm font-medium text-[--ink] mb-1.5 block">Your Name</label>
-                <Input
-                  value={playerName}
-                  onChange={(e) => setPlayerName(e.target.value)}
-                  placeholder="Alex Chen"
+          {/* STEP 1: IDENTITY */}
+          {step === 1 && (
+            <div className="flex flex-col gap-4">
+              <span className="font-mono text-xs text-[var(--primary)] tracking-wide font-bold">
+                === OPERATOR IDENTIFICATION ===
+              </span>
+              
+              <div className="flex flex-col gap-1">
+                <span className="font-mono text-xs text-[var(--text-standard)]">
+                  ENTER YOUR DESIGNATION (OPTIONAL):
+                </span>
+                <TerminalInput
+                  value={operatorName}
+                  onChange={(val) => setOperatorName(val)}
+                  prefix="CTO@SYS:~# "
+                  charLimit={30}
                 />
-                <div className="text-xs text-[--steel] mt-1.5">Optional — defaults to Alex Chen</div>
               </div>
 
-              <div>
-                <div className="w-full">
-                  <span className="text-xs text-[--steel] float-right mt-1">
-                    {companyName.length}/40
-                  </span>
-                  <label className="text-sm font-medium text-[--ink] mb-1.5 block">Company Name</label>
-                </div>
-                <Input
+              <div className="flex flex-col gap-1 mt-2">
+                <span className="font-mono text-xs text-[var(--text-bright)]">
+                  ENTER COMPANY NAME (REQUIRED):
+                </span>
+                <TerminalInput
                   value={companyName}
-                  onChange={(e) => {
-                    setCompanyName(e.target.value);
+                  onChange={(val) => {
+                    setCompanyName(val);
                     setErrorText(null);
                   }}
-                  placeholder="e.g. NovaCorp, Helix AI, Foundry..."
-                  maxLength={40}
-                  className={errorText ? "border-[--error] focus:border-[--error]" : ""}
+                  prefix="CORP@SYS:~# "
+                  charLimit={40}
+                  onSubmit={handleConfirmIdentity}
                 />
-                {errorText && <div className="text-xs text-[--error] mt-1">{errorText}</div>}
+                <span className="font-mono text-[10px] text-[var(--text-muted)] mt-1">
+                  CHAR LIMIT: 40 // MIN: 2 CHARS
+                </span>
+              </div>
 
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {nameChips.map((chip) => (
-                    <div
-                      key={chip}
+              {errorText && (
+                <span className="font-mono text-xs text-[var(--text-alert)] font-bold">
+                  ❗ {errorText}
+                </span>
+              )}
+
+              {/* Presets */}
+              <div className="border border-[var(--matrix-line)] p-4 flex flex-col gap-2">
+                <span className="font-mono text-xs text-[var(--text-muted)]">
+                  QUICK-LOAD PRESETS:
+                </span>
+                <div className="flex flex-wrap gap-2">
+                  {presetCompanies.map((preset) => (
+                    <PromptButton
+                      key={preset}
+                      label={preset}
                       onClick={() => {
-                        setCompanyName(chip);
+                        setCompanyName(preset);
                         setErrorText(null);
                       }}
-                      className="rounded-full bg-[--surface] border border-[--hairline] text-xs text-[--slate] px-3 py-1 cursor-pointer hover:border-[--ink] transition-colors"
-                    >
-                      {chip}
-                    </div>
+                    />
                   ))}
                 </div>
               </div>
-            </div>
 
-            <Button variant="default" className="w-full mt-8 py-3 text-base" onClick={handleNext}>
-              Continue →
-            </Button>
-          </div>
-        )}
-
-        {/* STEP 2: INDUSTRY */}
-        {step === 2 && (
-          <div className="animate-in fade-in slide-in-from-right-4 duration-300">
-            <h1 className="text-[32px] font-semibold leading-[1.25] tracking-[-0.5px] text-[--ink]">
-              What does your company do?
-            </h1>
-            <p className="text-[--slate] text-base mt-2 leading-relaxed">
-              This shapes every scenario you'll face as CTO.
-            </p>
-
-            <div className="mt-8 grid grid-cols-2 sm:grid-cols-4 gap-2.5 max-h-[350px] overflow-y-auto pr-1">
-              {industries.map((ind) => {
-                const isSelected = selectedIndustry?.id === ind.id;
-                return (
-                  <div
-                    key={ind.id}
-                    onClick={() => {
-                      if (ind.id === "Surprise Me") {
-                        handleSurpriseMe();
-                      } else {
-                        setSelectedIndustry(ind);
-                        setErrorText(null);
-                      }
-                    }}
-                    className={`bg-[--canvas] border rounded-[16px] p-3.5 cursor-pointer transition-all duration-150 flex flex-col justify-between ${
-                      isSelected
-                        ? "border-2 border-[--primary] bg-[--surface]"
-                        : "border-[--hairline]"
-                    }`}
-                  >
-                    <div>
-                      <div className="text-xl">{ind.emoji}</div>
-                      <div className="text-sm font-semibold text-[--ink] mt-1 leading-tight">{ind.name}</div>
-                      <div className="text-xs text-[--steel] mt-0.5 leading-snug">{ind.desc}</div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Hint Bar */}
-            {selectedIndustry && (
-              <div className="mt-4 bg-[--surface] rounded-[12px] p-4 border-l-4 border-[--blue] text-sm text-[--charcoal] leading-relaxed">
-                <ExpandableText clamp={2} text={selectedIndustry.expect} />
+              {/* Confirmation actions */}
+              <div className="flex justify-between items-center mt-4 border-t border-[var(--matrix-line)] pt-3">
+                <PromptButton
+                  label="CONFIRM AND CONTINUE"
+                  active={true}
+                  onClick={handleConfirmIdentity}
+                />
+                <PromptButton
+                  label="BACK TO MENU"
+                  onClick={() => router.push("/")}
+                />
               </div>
-            )}
-
-            {errorText && <div className="text-xs text-[--error] mt-2">{errorText}</div>}
-
-            <div className="mt-8 flex gap-3">
-              <Button variant="outline" className="px-6" onClick={handleBack}>
-                ← Back
-              </Button>
-              <Button variant="default" className="flex-1" onClick={handleNext}>
-                Continue →
-              </Button>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* STEP 3: STAGE */}
-        {step === 3 && (
-          <div className="animate-in fade-in slide-in-from-right-4 duration-300">
-            <h1 className="text-[32px] font-semibold leading-[1.25] tracking-[-0.5px] text-[--ink]">
-              Where is your company right now?
-            </h1>
-            <p className="text-[--slate] text-base mt-2 leading-relaxed">
-              Stage sets your budget, team size, and starting pressure.
-            </p>
+          {/* STEP 2: INDUSTRY SELECTION */}
+          {step === 2 && (
+            <div className="flex flex-col gap-4">
+              <span className="font-mono text-xs text-[var(--primary)] tracking-wide font-bold">
+                === SELECT OPERATING SECTOR ===
+              </span>
+              <span className="font-mono text-xs text-[var(--text-muted)]">
+                USE ARROW KEYS OR CLICK TO NAVIGATE. ENTER TO CONFIRM.
+              </span>
 
-            <div className="mt-6 space-y-2.5 max-h-[250px] overflow-y-auto pr-1">
-              {stages.map((stg) => {
-                const isSelected = selectedStage.id === stg.id;
-                return (
-                  <div
-                    key={stg.id}
-                    onClick={() => setSelectedStage(stg)}
-                    className={`bg-[--canvas] border rounded-[16px] p-4 cursor-pointer flex items-start justify-between gap-3 ${
-                      isSelected
-                        ? "border-2 border-[--primary]"
-                        : "border-[--hairline]"
-                    }`}
-                  >
-                    <div className="flex items-start gap-3">
-                      <Badge className={`rounded-full text-xs font-semibold px-3 py-1 border-0 ${stg.badgeColor}`}>
-                        {stg.id === "Series B" ? "Series B★" : stg.name}
-                      </Badge>
-                      <div>
-                        <div className="text-sm font-semibold text-[--ink]">{stg.id}</div>
-                        <div className="text-xs text-[--slate] mt-0.5 leading-relaxed">{stg.desc}</div>
+              {/* Grid 11 rows x 2 cols */}
+              <div className="border border-[var(--matrix-line)] p-1 text-xs">
+                <table className="w-full font-mono border-collapse select-none">
+                  <tbody>
+                    {Array.from({ length: 11 }).map((_, rowIdx) => {
+                      const col1Idx = rowIdx * 2;
+                      const col2Idx = rowIdx * 2 + 1;
+                      const ind1 = industries[col1Idx];
+                      const ind2 = industries[col2Idx];
+
+                      return (
+                        <tr key={rowIdx} className="border-b border-[var(--matrix-line)] last:border-b-0">
+                          <td className="w-1/2 p-1 border-r border-[var(--matrix-line)]">
+                            {ind1 && (
+                              <PromptButton
+                                label={ind1.name}
+                                active={industryIndex === col1Idx}
+                                onClick={() => setIndustryIndex(col1Idx)}
+                                className="w-full text-left"
+                              />
+                            )}
+                          </td>
+                          <td className="w-1/2 p-1">
+                            {ind2 && (
+                              <PromptButton
+                                label={ind2.name}
+                                active={industryIndex === col2Idx}
+                                onClick={() => setIndustryIndex(col2Idx)}
+                                className="w-full text-left"
+                              />
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Sector Briefing panel */}
+              <div className="border border-[var(--primary)] p-4 flex flex-col gap-1 bg-[var(--canvas)]">
+                <span className="font-mono text-xs text-[var(--primary)] font-bold">
+                  ┌─[ SECTOR BRIEFING ]─────────────────────────────────────┐
+                </span>
+                <div className="font-mono text-xs leading-relaxed text-[var(--text-standard)] px-2 py-1">
+                  {industries[industryIndex].expect}
+                </div>
+                <span className="font-mono text-xs text-[var(--primary)] font-bold">
+                  └──────────────────────────────────────────────────────────┘
+                </span>
+              </div>
+
+              {/* Confirm Actions */}
+              <div className="flex justify-between items-center mt-2 border-t border-[var(--matrix-line)] pt-3">
+                <PromptButton
+                  label="CONFIRM SECTOR"
+                  active={true}
+                  onClick={handleConfirmIndustry}
+                />
+                <PromptButton
+                  label="BACK"
+                  onClick={() => setStep(1)}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* STEP 3: STAGE SELECTION */}
+          {step === 3 && (
+            <div className="flex flex-col gap-4">
+              <span className="font-mono text-xs text-[var(--primary)] tracking-wide font-bold">
+                === SELECT CURRENT OPERATIONAL STAGE ===
+              </span>
+
+              {/* Left stages list + Right preview splits */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                
+                {/* Stages List */}
+                <div className="border border-[var(--matrix-line)] p-2 flex flex-col gap-2 h-[350px] overflow-y-auto no-scrollbar">
+                  <span className="font-mono text-[10px] text-[var(--text-muted)] border-b border-[var(--matrix-line)] pb-1 mb-1">
+                    [ STAGE SELECT ]
+                  </span>
+                  
+                  {stages.map((stg, idx) => {
+                    const isActive = stageIndex === idx;
+                    return (
+                      <div
+                        key={stg.id}
+                        onClick={() => setStageIndex(idx)}
+                        className={`p-2 border cursor-default select-none font-mono ${
+                          isActive 
+                            ? "border-[var(--primary)] text-[var(--primary)]" 
+                            : "border-[var(--matrix-line)] text-[var(--text-standard)]"
+                        }`}
+                      >
+                        <div className="flex justify-between font-bold text-xs">
+                          <span>{isActive ? `> ${stg.name}` : `  ${stg.name}`}</span>
+                          <span className="text-[var(--text-muted)]">{stg.headcount} HEADCOUNT</span>
+                        </div>
+                        <div className="text-[10px] text-[var(--text-standard)] mt-1 ml-4 italic">
+                          {stg.desc}
+                        </div>
                       </div>
-                    </div>
-                    <div className="bg-[--surface] rounded-full text-xs text-[--steel] px-2 py-0.5 flex-shrink-0">
-                      {stg.headcount}
-                    </div>
+                    );
+                  })}
+                </div>
+
+                {/* Metrics Preview */}
+                <div className="border border-[var(--primary)] p-4 flex flex-col gap-3 bg-[var(--canvas)] h-[350px]">
+                  <span className="font-mono text-xs text-[var(--primary)] font-bold">
+                    ┌─[ STARTING CONDITIONS PREVIEW ]─────────────────────────┐
+                  </span>
+                  <div className="flex flex-col gap-3 px-1 py-2 justify-center flex-1">
+                    <AsciiBar label="BUDGET" value={selectedStage.metrics.budget} width={16} />
+                    <AsciiBar label="MORALE" value={selectedStage.metrics.teamMorale} width={16} />
+                    <AsciiBar label="T.DEBT" value={selectedStage.metrics.technicalDebt} width={16} />
+                    <AsciiBar label="VELOC" value={selectedStage.metrics.productVelocity} width={16} />
+                    <AsciiBar label="CEO.TR" value={selectedStage.metrics.ceoRelationship} width={16} />
+                    <AsciiBar label="TALENT" value={selectedStage.metrics.talentPipeline} width={16} />
                   </div>
-                );
-              })}
-            </div>
+                  <span className="font-mono text-xs text-[var(--primary)] font-bold">
+                    └──────────────────────────────────────────────────────────┘
+                  </span>
+                </div>
 
-            {/* Metric Preview Panel */}
-            <div className="mt-6 bg-[--surface] rounded-[16px] p-4 animate-in fade-in duration-300">
-              <div className="text-xs font-semibold text-[--steel] uppercase tracking-wider mb-4">
-                Starting Conditions Preview
               </div>
-              <div className="grid grid-cols-2 gap-x-6 gap-y-3">
-                <MetricBar label="Budget" value={selectedStage.metrics.budget} />
-                <MetricBar label="Team Morale" value={selectedStage.metrics.teamMorale} />
-                <MetricBar label="Tech Debt" value={selectedStage.metrics.technicalDebt} invertColorLogic={true} />
-                <MetricBar label="Velocity" value={selectedStage.metrics.productVelocity} />
-                <MetricBar label="Security" value={selectedStage.metrics.securityPosture} />
-                <MetricBar label="Talent" value={selectedStage.metrics.talentPipeline} />
+
+              {/* Initialize Actions */}
+              <div className="flex justify-between items-center mt-2 border-t border-[var(--matrix-line)] pt-3">
+                <PromptButton
+                  label="INITIALIZE SIMULATION"
+                  active={true}
+                  onClick={handleLaunchSimulation}
+                />
+                <PromptButton
+                  label="BACK"
+                  onClick={() => setStep(2)}
+                />
               </div>
             </div>
+          )}
 
-            {errorText && <div className="text-xs text-[--error] mt-2">{errorText}</div>}
-
-            <div className="mt-8 flex gap-3">
-              <Button variant="outline" className="px-6" onClick={handleBack}>
-                ← Back
-              </Button>
-              <Button variant="default" className="flex-1 text-base py-3 h-auto" onClick={handleLaunch}>
-                Generate My Company →
-              </Button>
-            </div>
-          </div>
-        )}
-
-      </div>
+        </div>
+      )}
     </main>
   );
 }

@@ -1,12 +1,16 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useGameStore } from "@/hooks/use-game-store";
-import { VibrantCard } from "@/components/vibrant-card";
-import { Progress } from "@/components/ui/progress";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import {
+  AsciiBox,
+  AsciiBar,
+  PromptButton,
+  AsciiTitle,
+  TypewriterText,
+  ScanlinePanel,
+} from "@/components/retro-tui";
 
 export default function ResultsPage() {
   const router = useRouter();
@@ -20,229 +24,223 @@ export default function ResultsPage() {
     resetGame,
   } = useGameStore();
 
-  const handleRestart = () => {
-    resetGame();
-    router.push("/");
-  };
+  const [selectedIdx, setSelectedIdx] = useState(0); // 0: New Simulation, 1: Return to Menu
+  const [showContent, setShowContent] = useState(false);
 
   const win = gameOverType === "win";
-  
-  // Calculate average score
-  const finalScore = Math.round(
-    (playerStats.scores.strategic +
-      playerStats.scores.people +
-      playerStats.scores.technical +
-      playerStats.scores.business +
-      playerStats.scores.risk) /
-      5
-  );
+  const finalXp = playerStats.xp;
+  const decisionsMade = scenarioHistory.length;
+  const weeksSurvived = Math.max(1, companyState.company.week - 1);
+  const companyName = companyState.company.name || "NOVACORP";
+  const playerName = companyState.company.playerName || "OPERATOR";
 
-  // Outcome details based on gameOverType
-  const getOutcomeDetails = () => {
-    if (gameOverType === "win") {
-      return {
-        badgeText: "Quarter Complete",
-        badgeClass: "bg-green-500 text-white border-0",
-        headline: (
-          <h1 className="text-[56px] font-semibold leading-[1.1] tracking-[-1.5px] text-white">
-            You survived.
-          </h1>
-        ),
-      };
-    } else if (gameOverType === "fired" || gameOverType === "lose") {
-      return {
-        badgeText: "Terminated",
-        badgeClass: "bg-[--coral] text-white border-0",
-        headline: (
-          <h1 className="text-[56px] font-semibold leading-[1.1] tracking-[-1.5px] text-white">
-            You've been <br />
-            <span className="text-[--coral]">replaced.</span>
-          </h1>
-        ),
-      };
+  // Trigger content reveal after a tiny delay to simulate CRT warming up
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setShowContent(true);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "ArrowDown" || e.key === "s" || e.key === "S") {
+        e.preventDefault();
+        setSelectedIdx((prev) => (prev === 0 ? 1 : 0));
+      } else if (e.key === "ArrowUp" || e.key === "w" || e.key === "W") {
+        e.preventDefault();
+        setSelectedIdx((prev) => (prev === 1 ? 0 : 1));
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        handleExecuteOption(selectedIdx);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedIdx]);
+
+  const handleExecuteOption = (idx: number) => {
+    if (idx === 0) {
+      resetGame();
+      router.push("/setup");
     } else {
-      return {
-        badgeText: "Emergency Mode",
-        badgeClass: "bg-[--blue] text-white border-0",
-        headline: (
-          <h1 className="text-[56px] font-semibold leading-[1.1] tracking-[-1.5px] text-white">
-            Emergency <br />
-            <span className="text-[--blue]">Protocol.</span>
-          </h1>
-        ),
-      };
+      resetGame();
+      router.push("/");
     }
   };
 
-  const outcome = getOutcomeDetails();
+  const getStrategicScore = () => playerStats.scores.strategic;
+  const getPeopleScore = () => playerStats.scores.people;
+  const getTechnicalScore = () => playerStats.scores.technical;
+  const getBusinessScore = () => playerStats.scores.business;
+  const getRiskScore = () => playerStats.scores.risk;
 
-  // Helper for metrics color in the ending grid
-  const getMetricCellColor = (key: string, val: number) => {
-    if (key === "technicalDebt") {
-      // For Tech Debt: low is good, high is bad
-      if (val < 40) return "text-white";
-      if (val <= 60) return "text-amber-400";
-      return "text-[--coral]";
-    }
-    if (val > 60) return "text-white";
-    if (val >= 40) return "text-amber-400";
-    return "text-[--coral]";
-  };
+  const debriefLines = wrapText(
+    gameOverReason || 
+    (win
+      ? "You stabilized the core infrastructure, kept leadership aligned, and navigated structural tech debt under volatile quarter circumstances."
+      : "The board voted to replace you. Debt backlog reached unacceptable boundaries, causing organizational trust to dissolve completely."),
+    80
+  ).slice(0, 3); // Max 3 lines as required
 
-  const handleShare = () => {
-    if (typeof navigator !== "undefined" && navigator.clipboard) {
-      const shareText = `I scored ${finalScore} XP as ${playerStats.level} in the CTO Simulator! Can you survive one quarter in the hot seat?`;
-      navigator.clipboard.writeText(shareText);
-      alert("Results copied to clipboard!");
+  function wrapText(text: string, limit: number): string[] {
+    const words = text.split(" ");
+    const lines: string[] = [];
+    let currentLine = "";
+
+    words.forEach((word) => {
+      if (currentLine.length + word.length + (currentLine ? 1 : 0) <= limit) {
+        currentLine += (currentLine ? " " : "") + word;
+      } else {
+        lines.push(currentLine);
+        currentLine = word;
+      }
+    });
+    if (currentLine) {
+      lines.push(currentLine);
     }
-  };
+    return lines;
+  }
+
+  if (!showContent) {
+    return (
+      <main className="bg-[var(--canvas)] h-screen w-screen flex items-center justify-center p-8 select-none">
+        <span className="text-[var(--primary)] cursor-blink">█</span>
+      </main>
+    );
+  }
 
   return (
-    <main className="bg-[--primary] min-h-screen font-sans text-white select-none relative">
+    <main className="bg-[var(--canvas)] min-h-screen w-screen flex flex-col items-center justify-center p-4 relative select-none">
       
-      {/* Container */}
-      <div className="max-w-[720px] mx-auto px-6 py-16 flex flex-col justify-center h-full min-h-screen">
+      {/* 90ch container box */}
+      <div className="w-full max-w-[90ch] flex flex-col gap-5">
         
-        {/* OUTCOME HEADER */}
-        <div>
-          <Badge className={`rounded-full text-xs font-semibold px-4 py-1.5 mb-6 uppercase ${outcome.badgeClass}`}>
-            {outcome.badgeText}
-          </Badge>
+        {/* Outcome Titles */}
+        <div className="text-center">
+          {win ? (
+            <>
+              <AsciiTitle size="xxl" text="SURVIVED" />
+              <AsciiTitle size="xl" text="QUARTER COMPLETE" className="mt-[-8px]" />
+              <div className="text-[var(--text-bright)] font-mono text-center text-xs my-2">
+                ════════════════════════════════════════════════════════════<br />
+                {companyName} HAS COMPLETED Q3 2026 UNDER YOUR LEADERSHIP.<br />
+                ════════════════════════════════════════════════════════════
+              </div>
+            </>
+          ) : (
+            <>
+              <AsciiTitle size="xxl" text="TERMINATED" />
+              <AsciiTitle size="xl" text="GAME OVER" className="mt-[-8px]" />
+              <div className="text-[var(--text-alert)] font-mono text-center text-xs my-2">
+                ════════════════════════════════════════════════════════════<br />
+                THE BOARD HAS VOTED TO REPLACE YOU EFFECTIVE IMMEDIATELY.<br />
+                ════════════════════════════════════════════════════════════
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* performance report splits */}
+        <div className="border-t border-b border-[var(--matrix-line)] py-3">
+          <div className="font-mono text-[10px] text-[var(--text-muted)] text-center uppercase tracking-wide">
+            FINAL PERFORMANCE REPORT // {playerName} // {companyName}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           
-          {outcome.headline}
+          {/* Competency score charts */}
+          <div className="border border-[var(--matrix-line)] p-4 flex flex-col gap-2.5">
+            <span className="font-mono text-xs text-[var(--primary)] font-bold mb-1">
+              [ SCORE BREAKDOWN ]
+            </span>
+            <AsciiBar label="STRATEGIC" value={getStrategicScore()} width={16} />
+            <AsciiBar label="PEOPLE" value={getPeopleScore()} width={16} />
+            <AsciiBar label="TECHNICAL" value={getTechnicalScore()} width={16} />
+            <AsciiBar label="BUSINESS" value={getBusinessScore()} width={16} />
+            <AsciiBar label="RISK MGMT" value={getRiskScore()} width={16} />
+          </div>
 
-          <p className="mt-4 text-[18px] text-white/60 leading-relaxed max-w-[480px] max-h-[80px] overflow-y-auto select-text">
-            {gameOverReason || "Your simulation session has ended. Review your scores and options."}
-          </p>
-        </div>
-
-        {/* SCORE CARD — VibrantCard */}
-        <div className="mt-8">
-          <VibrantCard color={win ? "blue" : "coral"}>
-            <div className="text-sm text-white/60 uppercase tracking-wider font-semibold">Final Score</div>
-            <div className="text-[56px] font-semibold leading-[1.1] text-white mt-1">{finalScore}</div>
-            
-            <div className="border-t border-white/20 my-5" />
-
-            <div className="grid grid-cols-1 gap-3">
-              {/* Strategic */}
-              <div className="flex items-center gap-3">
-                <span className="text-sm text-white/70 w-32 flex-shrink-0">Strategic</span>
-                <Progress value={playerStats.scores.strategic} className="flex-1 h-1.5 bg-white/20" />
-                <span className="text-sm font-semibold text-white w-8 text-right">{playerStats.scores.strategic}</span>
-              </div>
-
-              {/* People */}
-              <div className="flex items-center gap-3">
-                <span className="text-sm text-white/70 w-32 flex-shrink-0">People</span>
-                <Progress value={playerStats.scores.people} className="flex-1 h-1.5 bg-white/20" />
-                <span className="text-sm font-semibold text-white w-8 text-right">{playerStats.scores.people}</span>
-              </div>
-
-              {/* Technical */}
-              <div className="flex items-center gap-3">
-                <span className="text-sm text-white/70 w-32 flex-shrink-0">Technical</span>
-                <Progress value={playerStats.scores.technical} className="flex-1 h-1.5 bg-white/20" />
-                <span className="text-sm font-semibold text-white w-8 text-right">{playerStats.scores.technical}</span>
-              </div>
-
-              {/* Business */}
-              <div className="flex items-center gap-3">
-                <span className="text-sm text-white/70 w-32 flex-shrink-0">Business</span>
-                <Progress value={playerStats.scores.business} className="flex-1 h-1.5 bg-white/20" />
-                <span className="text-sm font-semibold text-white w-8 text-right">{playerStats.scores.business}</span>
-              </div>
-
-              {/* Risk */}
-              <div className="flex items-center gap-3">
-                <span className="text-sm text-white/70 w-32 flex-shrink-0">Risk</span>
-                <Progress value={playerStats.scores.risk} className="flex-1 h-1.5 bg-white/20" />
-                <span className="text-sm font-semibold text-white w-8 text-right">{playerStats.scores.risk}</span>
-              </div>
+          {/* Company metrics recap */}
+          <div className="border border-[var(--matrix-line)] p-4 flex flex-col gap-2 bg-[var(--surface-dim)]">
+            <span className="font-mono text-xs text-[var(--text-bright)] font-bold mb-1">
+              [ FINAL COMPANY STATE ]
+            </span>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+              <AsciiBar label="BUDGET" value={companyState.metrics.budget} width={12} />
+              <AsciiBar label="MORALE" value={companyState.metrics.teamMorale} width={12} />
+              <AsciiBar label="T.DEBT" value={companyState.metrics.technicalDebt} width={12} />
+              <AsciiBar label="VELOC" value={companyState.metrics.productVelocity} width={12} />
+              <AsciiBar label="CEO.TR" value={companyState.metrics.ceoRelationship} width={12} />
+              <AsciiBar label="TALENT" value={companyState.metrics.talentPipeline || 40} width={12} />
             </div>
-          </VibrantCard>
+          </div>
+
         </div>
 
-        {/* SUMMARY TILES */}
-        <div className="grid grid-cols-3 gap-3 mt-4">
-          {/* Decisions */}
-          <div className="bg-white/8 border border-white/10 rounded-[20px] p-4 text-center">
-            <div className="text-2xl mb-1">📝</div>
-            <div className="text-[20px] font-semibold text-white leading-tight">{scenarioHistory.length} Decisions</div>
-            <div className="text-xs text-white/50 mt-1 line-clamp-1">Interventions Made</div>
+        {/* telemetry log stats */}
+        <div className="border border-[var(--matrix-line)] p-3 grid grid-cols-3 gap-2 text-xs text-center font-mono">
+          <div>
+            <span className="text-[var(--text-muted)] block uppercase text-[10px]">DECISIONS MADE</span>
+            <span className="text-[var(--text-bright)] font-bold text-sm">{decisionsMade}</span>
           </div>
-
-          {/* Weeks */}
-          <div className="bg-white/8 border border-white/10 rounded-[20px] p-4 text-center">
-            <div className="text-2xl mb-1">⏳</div>
-            <div className="text-[20px] font-semibold text-white leading-tight">Week {companyState.company.week - 1}</div>
-            <div className="text-xs text-white/50 mt-1 line-clamp-1">Quarter Completed</div>
+          <div>
+            <span className="text-[var(--text-muted)] block uppercase text-[10px]">WEEKS SURVIVED</span>
+            <span className="text-[var(--text-bright)] font-bold text-sm">{weeksSurvived} / 12</span>
           </div>
-
-          {/* Badges */}
-          <div className="bg-white/8 border border-white/10 rounded-[20px] p-4 text-center">
-            <div className="text-2xl mb-1">🏆</div>
-            <div className="text-[20px] font-semibold text-white leading-tight">{badges.length} Badges</div>
-            <div className="text-xs text-white/50 mt-1 line-clamp-1">Achievements Unlocked</div>
+          <div>
+            <span className="text-[var(--text-muted)] block uppercase text-[10px]">FINAL STATUS XP</span>
+            <span className="text-[var(--primary)] font-bold text-sm">{finalXp} XP</span>
           </div>
         </div>
 
-        {/* FINAL METRICS */}
-        <div className="bg-white/5 rounded-[20px] p-5 mt-4 select-text">
-          <div className="text-xs font-semibold text-white/50 uppercase tracking-wider mb-4">
-            Final Company State
-          </div>
-
-          <div className="grid grid-cols-4 gap-3">
-            {/* Metric Cell 1 */}
-            <div className="text-center">
-              <div className={`text-[18px] font-semibold leading-tight ${getMetricCellColor("budget", companyState.metrics.budget)}`}>
-                {companyState.metrics.budget}%
-              </div>
-              <div className="text-xs text-white/40 mt-0.5 line-clamp-1">Budget</div>
-            </div>
-
-            {/* Metric Cell 2 */}
-            <div className="text-center">
-              <div className={`text-[18px] font-semibold leading-tight ${getMetricCellColor("teamMorale", companyState.metrics.teamMorale)}`}>
-                {companyState.metrics.teamMorale}%
-              </div>
-              <div className="text-xs text-white/40 mt-0.5 line-clamp-1">Morale</div>
-            </div>
-
-            {/* Metric Cell 3 */}
-            <div className="text-center">
-              <div className={`text-[18px] font-semibold leading-tight ${getMetricCellColor("technicalDebt", companyState.metrics.technicalDebt)}`}>
-                {companyState.metrics.technicalDebt}%
-              </div>
-              <div className="text-xs text-white/40 mt-0.5 line-clamp-1">Tech Debt</div>
-            </div>
-
-            {/* Metric Cell 4 */}
-            <div className="text-center">
-              <div className={`text-[18px] font-semibold leading-tight ${getMetricCellColor("productVelocity", companyState.metrics.productVelocity)}`}>
-                {companyState.metrics.productVelocity}%
-              </div>
-              <div className="text-xs text-white/40 mt-0.5 line-clamp-1">Velocity</div>
-            </div>
+        {/* Badges collected list */}
+        <div className="border border-[var(--matrix-line)] p-3">
+          <span className="font-mono text-xs text-[var(--primary)] font-bold block mb-2">
+            [ ACHIEVEMENTS COLLECTED ]
+          </span>
+          <div className="flex flex-wrap gap-2 text-xs">
+            {badges.length > 0 ? (
+              badges.map((badge, idx) => (
+                <span key={idx} className="text-green-400 font-bold">
+                  [{badge.label.toUpperCase()}]
+                </span>
+              ))
+            ) : (
+              <span className="text-[var(--text-muted)] italic">
+                NO BADGES EARNED IN THIS TIMELINE.
+              </span>
+            )}
           </div>
         </div>
 
-        {/* CTA ROW */}
-        <div className="mt-10 flex gap-3">
-          <Button
-            className="flex-1 bg-white text-[--primary] rounded-full py-3 text-base font-semibold hover:bg-white/90 cursor-pointer h-auto"
-            onClick={handleRestart}
-          >
-            Play Again
-          </Button>
-          <Button
-            variant="secondary"
-            className="flex-1 border-white/30 text-white rounded-full py-3 text-base hover:bg-white/10 cursor-pointer h-auto"
-            onClick={handleShare}
-          >
-            Share Results
-          </Button>
+        {/* CTO Final debrief memo */}
+        <div className="border border-[var(--primary-dim)] p-3 relative bg-[var(--canvas)]">
+          <span className="absolute -top-2 left-3 px-1 text-[10px] bg-[var(--canvas)] text-[var(--primary)] font-bold">
+            ┌─[ CTO FINAL DEBRIEF ]
+          </span>
+          <div className="text-xs text-[var(--primary)] font-mono leading-relaxed select-text py-1 italic">
+            {debriefLines.map((line, idx) => (
+              <div key={idx}>&gt;&gt; {line}</div>
+            ))}
+          </div>
+        </div>
+
+        {/* Menu selections */}
+        <div className="flex justify-center gap-4 mt-2">
+          <PromptButton
+            label="NEW SIMULATION"
+            active={selectedIdx === 0}
+            onClick={() => handleExecuteOption(0)}
+          />
+          <PromptButton
+            label="RETURN TO MENU"
+            active={selectedIdx === 1}
+            onClick={() => handleExecuteOption(1)}
+          />
         </div>
 
       </div>

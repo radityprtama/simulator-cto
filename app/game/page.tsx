@@ -3,14 +3,17 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useGameStore } from "@/hooks/use-game-store";
-import { MetricBar } from "@/components/metric-bar";
-import { ScenarioBadge } from "@/components/scenario-badge";
-import { WeekGrid } from "@/components/week-grid";
-import { ExpandableText } from "@/components/expandable-text";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { Progress } from "@/components/ui/progress";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import {
+  AsciiBox,
+  AsciiBar,
+  PromptButton,
+  StatusBadge,
+  TerminalInput,
+  TypewriterText,
+  ScanlinePanel,
+  BlinkCursor,
+} from "@/components/retro-tui";
+import { Metrics, Scenario } from "@/lib/game.types";
 
 export default function GamePage() {
   const router = useRouter();
@@ -25,8 +28,6 @@ export default function GamePage() {
     activeEvaluation,
     isLoading,
     isSubmitting,
-    isVolumeOn,
-    setVolumeOn,
     loadNextScenario,
     submitChoice,
     closeEvaluation,
@@ -34,11 +35,29 @@ export default function GamePage() {
     resetGame,
   } = useGameStore();
 
-  const [selectedChoiceId, setSelectedChoiceId] = useState<string | null>(null);
+  const [selectedChoiceId, setSelectedChoiceId] = useState<string>("A");
   const [customText, setCustomText] = useState<string>("");
-  const [showMobileSidebar, setShowMobileSidebar] = useState<boolean>(false);
+  const [isChoiceDetailExpanded, setIsChoiceDetailExpanded] = useState<boolean>(false);
+  const [isBodyExpanded, setIsBodyExpanded] = useState<boolean>(false);
+  const [isNoteExpanded, setIsNoteExpanded] = useState<boolean>(false);
+  const [isEvaluationExpanded, setIsEvaluationExpanded] = useState<boolean>(false);
+  const [isRippleExpanded, setIsRippleExpanded] = useState<boolean>(false);
+  const [isInsightExpanded, setIsInsightExpanded] = useState<boolean>(false);
+  
+  // Evaluation modal page (1: Outcome report, 2: Metric Deltas)
+  const [evalPage, setEvalPage] = useState<number>(1);
+  
+  // Weekly Digest modal page (1: Recap reports, 2: Stakeholders and anonymous feedback)
+  const [digestPage, setDigestPage] = useState<number>(1);
 
-  // Load first scenario on mount if none is active
+  // Quit Dialog Overlay State
+  const [showQuitConfirm, setShowQuitConfirm] = useState<boolean>(false);
+
+  // Responsive Toggles for Tablet / Mobile
+  const [activePane, setActivePane] = useState<"center" | "right">("center"); // For tablet toggle (TAB)
+  const [showMobileLeft, setShowMobileLeft] = useState<boolean>(false); // For mobile toggle (F1)
+
+  // Load first scenario if none is active on mount
   useEffect(() => {
     if (!currentScenario && !isLoading && !isGameOver && !activeEvaluation && !weeklyDigest) {
       loadNextScenario();
@@ -52,668 +71,863 @@ export default function GamePage() {
     }
   }, [isGameOver, router]);
 
-  const handleSelectChoice = (id: string) => {
-    setSelectedChoiceId(id);
-  };
+  // Choices list helper (includes custom option D)
+  const choicesList = currentScenario?.choices || [];
+  const choicesKeys = [...choicesList.map((c) => c.id), "D"];
+
+  // Keyboard navigation logic
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Check if user is typing in a text field
+      const activeEl = document.activeElement;
+      const isTyping = activeEl?.tagName === "INPUT" || activeEl?.tagName === "TEXTAREA";
+
+      // 1. Quit confirmation override
+      if (showQuitConfirm) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          resetGame();
+          router.push("/");
+        } else if (e.key === "Escape" || e.key === "q" || e.key === "Q") {
+          e.preventDefault();
+          setShowQuitConfirm(false);
+        }
+        return;
+      }
+
+      // Quit trigger
+      if (e.key === "q" || e.key === "Q") {
+        if (!isTyping) {
+          e.preventDefault();
+          setShowQuitConfirm(true);
+          return;
+        }
+      }
+
+      // Responsive toggles (F1: Mobile sidebar, TAB: Tablet panel swap)
+      if (e.key === "F1") {
+        e.preventDefault();
+        setShowMobileLeft((prev) => !prev);
+        return;
+      }
+
+      if (e.key === "Tab") {
+        e.preventDefault();
+        setActivePane((prev) => (prev === "center" ? "right" : "center"));
+        return;
+      }
+
+      // If user is currently typing custom text, don't capture navigation keys (except Enter/Escape)
+      if (isTyping) {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          if (activeEl instanceof HTMLElement) activeEl.blur();
+        } else if (e.key === "Enter") {
+          e.preventDefault();
+          handleExecuteDecision();
+        }
+        return;
+      }
+
+      // 2. Weekly Digest keyboard control
+      if (weeklyDigest) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          if (digestPage === 1) {
+            setDigestPage(2);
+          } else {
+            setDigestPage(1);
+            closeWeeklyDigest();
+          }
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          if (digestPage === 2) setDigestPage(1);
+        } else if (e.key === "e" || e.key === "E") {
+          e.preventDefault();
+          setIsBodyExpanded((prev) => !prev);
+        }
+        return;
+      }
+
+      // 3. Active Evaluation keyboard control
+      if (activeEvaluation) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          if (evalPage === 1) {
+            setEvalPage(2);
+          } else {
+            setEvalPage(1);
+            closeEvaluation();
+          }
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          if (evalPage === 2) setEvalPage(1);
+        } else if (e.key === "e" || e.key === "E") {
+          e.preventDefault();
+          setIsEvaluationExpanded((prev) => !prev);
+        } else if (e.key === "n" || e.key === "N") {
+          e.preventDefault();
+          setIsRippleExpanded((prev) => !prev);
+        } else if (e.key === "i" || e.key === "I") {
+          e.preventDefault();
+          setIsInsightExpanded((prev) => !prev);
+        }
+        return;
+      }
+
+      // 4. Normal scenario keyboard control
+      if (currentScenario && !isLoading) {
+        if (e.key === "ArrowDown" || e.key === "s" || e.key === "S") {
+          e.preventDefault();
+          const currIdx = choicesKeys.indexOf(selectedChoiceId);
+          const nextIdx = (currIdx + 1) % choicesKeys.length;
+          setSelectedChoiceId(choicesKeys[nextIdx]);
+        } else if (e.key === "ArrowUp" || e.key === "w" || e.key === "W") {
+          e.preventDefault();
+          const currIdx = choicesKeys.indexOf(selectedChoiceId);
+          const prevIdx = (currIdx - 1 + choicesKeys.length) % choicesKeys.length;
+          setSelectedChoiceId(choicesKeys[prevIdx]);
+        } else if (e.key === "ArrowRight" || e.key === "d" || e.key === "D") {
+          e.preventDefault();
+          setIsChoiceDetailExpanded(true);
+        } else if (e.key === "ArrowLeft" || e.key === "a" || e.key === "A") {
+          e.preventDefault();
+          setIsChoiceDetailExpanded(false);
+        } else if (e.key === "e" || e.key === "E") {
+          e.preventDefault();
+          setIsBodyExpanded((prev) => !prev);
+        } else if (e.key === "n" || e.key === "N") {
+          e.preventDefault();
+          setIsNoteExpanded((prev) => !prev);
+        } else if (e.key === "Enter") {
+          e.preventDefault();
+          if (selectedChoiceId === "D" && customText.trim() === "") {
+            // Focus custom input by targeting it
+            const inputEl = document.querySelector('input[type="text"]');
+            if (inputEl instanceof HTMLElement) inputEl.focus();
+          } else {
+            handleExecuteDecision();
+          }
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [
+    currentScenario,
+    isLoading,
+    selectedChoiceId,
+    choicesKeys,
+    activeEvaluation,
+    evalPage,
+    weeklyDigest,
+    digestPage,
+    showQuitConfirm,
+    customText,
+    showMobileLeft,
+    activePane,
+  ]);
 
   const handleExecuteDecision = async () => {
     if (!selectedChoiceId) return;
     await submitChoice(selectedChoiceId, selectedChoiceId === "D" ? customText : "");
-    setSelectedChoiceId(null);
+    setSelectedChoiceId("A");
     setCustomText("");
+    setIsChoiceDetailExpanded(false);
+    setIsBodyExpanded(false);
+    setIsNoteExpanded(false);
   };
 
-  // Helper for initials
-  const getInitials = (name: string) => {
-    return name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .substring(0, 2)
-      .toUpperCase() || "AC";
+  // Wrap text function to support neat character wraps
+  const wrapText = (text: string, limit: number): string[] => {
+    const paragraphs = text.split("\n");
+    const lines: string[] = [];
+
+    paragraphs.forEach((para) => {
+      const words = para.split(" ");
+      let currentLine = "";
+      words.forEach((word) => {
+        if (currentLine.length + word.length + (currentLine ? 1 : 0) <= limit) {
+          currentLine += (currentLine ? " " : "") + word;
+        } else {
+          lines.push(currentLine);
+          currentLine = word;
+        }
+      });
+      if (currentLine) lines.push(currentLine);
+      // Empty line for paragraph breaks
+      if (paragraphs.length > 1) lines.push("");
+    });
+    // Remove last trailing empty line
+    if (lines[lines.length - 1] === "") lines.pop();
+    return lines;
   };
 
-  // Determine stakeholder state colors based on metrics
-  const getDotColor = (val: number) => {
-    if (val > 60) return "bg-green-500";
-    if (val >= 40) return "bg-amber-400";
-    return "bg-red-400";
+  // Get industry initials/short codes
+  const getIndustryCode = (ind: string) => {
+    if (!ind) return "SS";
+    const clean = ind.toUpperCase();
+    if (clean.includes("HEALTH")) return "HC";
+    if (clean.includes("GOV")) return "GT";
+    if (clean.includes("SAAS")) return "SS";
+    if (clean.includes("COMMERCE")) return "EC";
+    if (clean.includes("FIN")) return "FT";
+    if (clean.includes("ED")) return "ED";
+    if (clean.includes("AI") || clean.includes("ML")) return "AI";
+    if (clean.includes("CYBER")) return "CS";
+    if (clean.includes("LOG")) return "LO";
+    return clean.slice(0, 2);
   };
 
-  const companyName = companyState.company.name || "NovaCorp";
-  const initials = getInitials(companyState.company.playerName || "Alex Chen");
-  const currentXp = playerStats.xp % 1000;
-  const xpPercent = Math.min(100, (playerStats.xp % 1000) / 10);
-
-  // Channel emojis
-  const channelEmojis = {
-    slack: "💬",
-    email: "📧",
-    meeting: "📞",
-    phone_call: "📞",
-    board_report: "🗓️",
-  };
-
-  // Render Sidebar content (reusable on desktop + mobile drawer)
-  const renderSidebar = () => (
-    <div className="flex flex-col h-full">
-      {/* Company Block */}
-      <div className="select-text">
-        <div className="text-sm font-semibold text-[--ink] truncate">{companyName}</div>
-        <div className="rounded-full bg-[--surface] border border-[--hairline] text-xs px-2 py-0.5 text-[--slate] mt-1 inline-block">
-          {companyState.company.industry || "SaaS / B2B"}
-        </div>
-        <div className="text-xs text-[--steel] mt-1 block">
-          {companyState.company.stage}
-        </div>
-      </div>
-      
-      <div className="my-4 h-px bg-[--hairline]" />
-
-      {/* CTO Profile */}
-      <div className="flex flex-col">
-        <div className="flex items-center gap-2.5 mb-3">
-          <div className="w-8 h-8 rounded-full bg-[--blue] text-white text-xs font-semibold flex items-center justify-center">
-            {initials}
-          </div>
-          <div>
-            <div className="text-sm font-medium text-[--ink]">{companyState.company.playerName || "Alex Chen"}</div>
-            <div className="text-xs text-[--steel]">{playerStats.level}</div>
-          </div>
-        </div>
-        <Progress value={xpPercent} className="h-1 mt-2" />
-        <div className="text-xs text-[--steel] mt-1 text-right">{currentXp} / 1000 XP</div>
-      </div>
-
-      <div className="my-4 h-px bg-[--hairline]" />
-
-      {/* Company Health — 8 metrics */}
-      <div className="space-y-3">
-        <MetricBar label="Budget" value={companyState.metrics.budget} icon="💰" />
-        <MetricBar label="Morale" value={companyState.metrics.teamMorale} icon="🎭" />
-        <MetricBar label="Tech Debt" value={companyState.metrics.technicalDebt} icon="⚙️" invertColorLogic={true} />
-        <MetricBar label="Velocity" value={companyState.metrics.productVelocity} icon="🚀" />
-        <MetricBar label="CEO Trust" value={companyState.metrics.ceoRelationship} icon="🤝" />
-        <MetricBar label="Customers" value={companyState.metrics.customerSatisfaction} icon="😊" />
-        <MetricBar label="Security" value={companyState.metrics.securityPosture} icon="🔐" />
-        <MetricBar label="Talent" value={companyState.metrics.talentPipeline} icon="🌱" />
-      </div>
-
-      <div className="my-4 h-px bg-[--hairline]" />
-
-      {/* Active Flags */}
-      <div>
-        <div className="text-xs font-semibold text-[--steel] uppercase tracking-wider mb-2">
-          Active Issues
-        </div>
-        {companyState.activeFlags.length > 0 ? (
-          <div className="space-y-1">
-            {companyState.activeFlags.map((flag, idx) => (
-              <div
-                key={idx}
-                className="block truncate text-xs rounded-full bg-[--coral]/10 text-[--coral] px-2.5 py-1 text-center font-medium font-mono"
-              >
-                ⚠️ {flag.replaceAll("_", " ")}
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="text-xs text-[--stone] italic select-text">None — enjoy it while it lasts.</div>
+  // 12-segment progress bar helper for health items
+  const renderMetricRow = (label: string, value: number, isDebt = false) => {
+    let tag = "";
+    if (isDebt) {
+      if (value > 70) tag = " [HIGH]";
+    } else {
+      if (value < 40) tag = " [LOW]";
+    }
+    return (
+      <div className="my-1 text-xs">
+        <AsciiBar label={label} value={value} width={12} />
+        {tag && (
+          <span
+            className={`font-bold ml-1 ${
+              isDebt ? "text-[var(--text-alert)] cursor-blink" : "text-[var(--primary-dim)]"
+            }`}
+          >
+            {tag}
+          </span>
         )}
       </div>
+    );
+  };
 
-      <div className="my-4 h-px bg-[--hairline]" />
+  const companyName = companyState.company.name || "NOVACORP";
+  const playerXp = playerStats.xp;
+  const currentWeek = companyState.company.week;
 
-      {/* Week Timeline */}
-      <div>
-        <div className="text-xs font-semibold text-[--steel] uppercase tracking-wider mb-3">
-          Quarter Progress
-        </div>
-        <WeekGrid week={companyState.company.week} />
-      </div>
-    </div>
-  );
+  // Responsive Pane controls mapping
+  const isTablet = typeof window !== "undefined" && window.innerWidth >= 768 && window.innerWidth < 1280;
+  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+
+  const showLeftColumn = showMobileLeft || (!isMobile);
+  const showCenterColumn = !showMobileLeft && (activePane === "center" || !isTablet);
+  const showRightColumn = !showMobileLeft && (activePane === "right" || (!isTablet && !isMobile));
 
   return (
-    <div className="bg-[--canvas] h-screen overflow-hidden flex flex-col font-sans select-none text-[--ink] relative">
+    <div className="bg-[var(--canvas)] h-screen w-screen flex flex-col items-center justify-center font-mono leading-none p-1 text-xs md:text-sm select-none">
       
-      {/* MOBILE HEADER BAR */}
-      <header className="md:hidden h-14 border-b border-[--hairline] bg-[--canvas]/90 backdrop-blur-md px-4 flex items-center justify-between z-30">
-        <span className="font-semibold text-sm">CTO Simulator</span>
-        <div className="flex gap-2">
-          <Button variant="outline" size="xs" onClick={() => setShowMobileSidebar(!showMobileSidebar)}>
-            {showMobileSidebar ? "Close Stats" : "View Stats"}
-          </Button>
-          <Button variant="ghost" size="icon-xs" onClick={() => {
-            if (confirm("Reset current simulation?")) {
-              resetGame();
-              router.push("/");
-            }
-          }} className="w-8 h-8 rounded-full border border-[--hairline] text-xs">
-            ✕
-          </Button>
-        </div>
-      </header>
-
-      {/* MOBILE SIDEBAR BOTTOM SHEET DRAWER */}
-      {showMobileSidebar && (
-        <div className="md:hidden fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex flex-col justify-end">
-          <div className="bg-[--canvas] rounded-t-[32px] max-h-[85vh] overflow-y-auto p-6 border-t border-[--hairline]">
-            <div className="flex justify-between items-center mb-4">
-              <span className="font-semibold text-base">Dashboard Summary</span>
-              <Button variant="ghost" size="xs" className="w-8 h-8 rounded-full bg-[--surface]" onClick={() => setShowMobileSidebar(false)}>
-                ✕
-              </Button>
-            </div>
-            {renderSidebar()}
-          </div>
-        </div>
-      )}
-
-      {/* PRIMARY GAME SCREEN LAYOUT */}
-      <div className="flex-1 grid grid-cols-1 md:grid-cols-[220px_1fr] lg:grid-cols-[220px_1fr_200px] h-full overflow-hidden">
+      {/* 102ch TUI terminal size wrapper */}
+      <div className="w-full max-w-[102ch] h-[95vh] md:h-[650px] flex flex-col justify-between border border-[var(--matrix-line)] relative bg-[var(--canvas)]">
         
-        {/* LEFT SIDEBAR (DESKTOP) */}
-        <aside className="hidden md:block h-full overflow-y-auto sticky top-0 border-r border-[--hairline] px-4 py-5 select-none bg-[--canvas]">
-          {renderSidebar()}
-        </aside>
-
-        {/* CENTER PANEL */}
-        <main className="overflow-y-auto px-4 md:px-8 py-6 w-full flex flex-col items-center">
-          <div className="max-w-[680px] w-full">
-            
-            {/* Top Status Bar */}
-            <div className="flex items-center justify-between mb-5">
-              <div className="text-xs text-[--steel]">
-                Decision {decisionCount + 1}
-              </div>
-
-              <div className="flex items-center gap-2">
-                {/* Mood badge */}
-                <span className={`rounded-full text-xs font-semibold px-3 py-1 ${
-                  companyState.companyMood === "thriving" ? "bg-green-100 text-green-700" :
-                  companyState.companyMood === "stable" ? "bg-[--blue-200] text-[--blue-700]" :
-                  companyState.companyMood === "tense" ? "bg-amber-100 text-amber-700" :
-                  companyState.companyMood === "crisis" ? "bg-[--coral]/15 text-[--coral]" :
-                  "bg-red-100 text-red-700 animate-pulse"
-                }`}>
-                  {companyState.companyMood.toUpperCase()}
-                </span>
-
-                <Button variant="outline" size="xs" onClick={() => setVolumeOn(!isVolumeOn)} className="px-3 py-1 text-xs">
-                  {isVolumeOn ? "🔊 Volume" : "🔇 Muted"}
-                </Button>
-              </div>
-            </div>
-
-            {/* SCENARIO CARD */}
-            {isLoading ? (
-              <div className="flex flex-col items-center justify-center p-12 border border-[--hairline] rounded-[32px] h-[300px]">
-                <div className="w-8 h-8 animate-spin rounded-full border-4 border-[--hairline] border-t-[--blue-deep]" />
-                <p className="text-sm text-[--steel] mt-4 font-mono">Syncing technical alert logs...</p>
-              </div>
-            ) : currentScenario ? (
-              <div className="bg-[--canvas] rounded-[32px] border border-[--hairline] overflow-hidden shadow-[0_0_22px_rgba(0,0,0,0.08)] relative animate-in slide-in-from-right-4 duration-300 ease-out">
-                {/* Accent bar left */}
-                <div className="absolute left-0 top-0 bottom-0 w-1 bg-[--blue]" style={{ backgroundColor: `var(--scene-${currentScenario.type})` }} />
-
-                {/* CARD HEADER */}
-                <div className="px-7 pt-6 pb-4 select-text">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <ScenarioBadge type={currentScenario.type} urgency={currentScenario.urgency} />
-                    <div className="flex-1" />
-                    
-                    {/* Stakeholders watching list */}
-                    {(currentScenario.stakeholdersWatching || ["CFO", "Director of Core Arch"]).map((sh, idx) => (
-                      <span key={idx} className="text-xs text-[--steel] bg-[--surface] rounded-full px-2 py-0.5 border border-[--hairline]">
-                        👁 {sh}
-                      </span>
-                    ))}
-                  </div>
-
-                  <h2 className="text-[24px] font-semibold text-[--ink] leading-[1.3] mt-3">
-                    {currentScenario.title}
-                  </h2>
-
-                  <div className="flex items-center gap-1.5 mt-1.5 text-sm text-[--slate]">
-                    <span>{channelEmojis[currentScenario.channel] || "💬"}</span>
-                    <span>Via {currentScenario.channel.replaceAll("_", " ")} · {currentScenario.from}</span>
-                  </div>
+        {/* Top Split Columns Row */}
+        <div className="flex flex-1 overflow-hidden">
+          
+          {/* 1. LEFT PANE — SYSTEM DASHBOARD */}
+          {showLeftColumn && (
+            <div className="w-[22ch] flex-shrink-0 flex flex-col h-full bg-[var(--canvas)] select-none z-10">
+              <AsciiBox variant="single" title="SYS DASHBOARD" className="h-full">
+                <div className="text-[10px] leading-tight flex flex-col gap-0.5 text-[var(--text-bright)]">
+                  <div>CTO: {playerStats.level === "Junior CTO" ? "A. CHEN" : companyState.company.playerName?.toUpperCase().slice(0, 12)}</div>
+                  <div>ORG: {companyName.slice(0, 12)}</div>
+                  <div>SEC: {getIndustryCode(companyState.company.industry || "")}</div>
+                  <div>STG: {companyState.company.stage?.toUpperCase().slice(0, 10)}</div>
+                  <div>WK:  {String(currentWeek).padStart(2, "0")} / 12</div>
                 </div>
 
-                {/* CARD BODY */}
-                <div className="bg-[--surface-soft] px-7 py-5 select-text">
-                  <div className="font-serif italic text-[15px] leading-[1.65] text-[--charcoal]">
-                    <ExpandableText clamp={4} maxExpandedHeight="112px" text={currentScenario.body} />
-                  </div>
+                <div className="border-t border-[var(--matrix-line)] my-2" />
+                <div className="text-[10px] text-[var(--primary)] font-bold mb-1">[COMPANY HEALTH]</div>
+                
+                {renderMetricRow("BUDGET", companyState.metrics.budget)}
+                {renderMetricRow("MORALE", companyState.metrics.teamMorale)}
+                {renderMetricRow("T.DEBT", companyState.metrics.technicalDebt, true)}
+                {renderMetricRow("VELOC", companyState.metrics.productVelocity)}
+                {renderMetricRow("CEO.TR", companyState.metrics.ceoRelationship)}
+                {renderMetricRow("CUST", companyState.metrics.customerSatisfaction || 60)}
+                {renderMetricRow("SECUR", companyState.metrics.securityPosture || 50)}
+                {renderMetricRow("TALENT", companyState.metrics.talentPipeline || 40)}
 
-                  {/* Attachment chips */}
-                  {currentScenario.attachments && currentScenario.attachments.length > 0 && (
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {currentScenario.attachments.map((file, idx) => (
-                        <div key={idx} className="bg-[--surface] border border-[--hairline] rounded-[8px] text-xs px-3 py-1.5 flex items-center gap-1.5 font-mono">
-                          📎 <span>{file}</span>
-                        </div>
-                      ))}
-                    </div>
+                <div className="border-t border-[var(--matrix-line)] my-2" />
+                <div className="text-[10px] text-[var(--primary)] font-bold mb-1">[ACTIVE FLAGS]</div>
+                <div className="flex flex-col gap-1 max-h-[70px] overflow-y-auto no-scrollbar font-mono text-[10px] text-[var(--text-muted)]">
+                  {companyState.activeFlags.length > 0 ? (
+                    companyState.activeFlags.map((flag) => (
+                      <div key={flag} className="truncate">
+                        &gt; {flag.toLowerCase().slice(0, 18)}
+                      </div>
+                    ))
+                  ) : (
+                    <div>&gt; no_issues_active</div>
                   )}
                 </div>
 
-                {/* CTO NOTE */}
-                {currentScenario.context && (
-                  <div className="bg-amber-50 border-l-4 border-amber-400 px-7 py-4 select-text">
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <span>🧠</span>
-                      <span className="text-xs font-semibold text-amber-700 uppercase">CTO Note</span>
-                    </div>
-                    <div className="text-sm text-amber-900 leading-relaxed">
-                      <ExpandableText clamp={2} text={currentScenario.context} />
-                    </div>
+                <div className="border-t border-[var(--matrix-line)] my-2" />
+                <div className="text-[10px] text-[var(--primary)] font-bold mb-1">[QUARTER TIMELINE]</div>
+                <div className="flex flex-col gap-1 text-[10px]">
+                  <div className="flex items-center gap-0.5">
+                    <span className="w-5 text-[var(--text-muted)]">WK:</span>
+                    <span className="text-[var(--primary-dim)] font-bold">
+                      {"██".repeat(Math.max(0, currentWeek - 1))}
+                    </span>
+                    <span className="text-[var(--primary)] cursor-blink">██</span>
+                    <span className="text-[var(--text-muted)]">
+                      {"░░".repeat(Math.max(0, 12 - currentWeek))}
+                    </span>
                   </div>
-                )}
-              </div>
-            ) : null}
-
-            {/* CHOICES OPTIONS */}
-            {currentScenario && !isLoading && (
-              <div className="mt-6">
-                <div className="text-xs font-semibold text-[--steel] uppercase tracking-wider mb-3">
-                  Your Response
-                </div>
-
-                {/* Grid */}
-                <div className="space-y-2">
-                  {currentScenario.choices?.map((opt) => {
-                    const isSelected = selectedChoiceId === opt.id;
-                    return (
-                      <div
-                        key={opt.id}
-                        onClick={() => handleSelectChoice(opt.id)}
-                        className={`bg-[--canvas] border rounded-[16px] p-4 cursor-pointer transition-all duration-150 ${
-                          isSelected
-                            ? "border-2 border-[--primary] bg-[--surface]"
-                            : "border-[--hairline]"
-                        }`}
-                      >
-                        <div className="flex items-start gap-3">
-                          <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0 ${
-                            isSelected ? "bg-[--primary] text-white border border-[--primary]" : "bg-[--surface] border border-[--hairline] text-[--steel]"
-                          }`}>
-                            {opt.id}
-                          </div>
-                          <div className="flex-1 select-text">
-                            <div className="text-sm font-semibold text-[--ink]">{opt.label}</div>
-                            <div className="text-sm text-[--slate] mt-1 leading-relaxed">
-                              <ExpandableText clamp={2} text={opt.description} />
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Tradeoffs */}
-                        <div className="mt-2 pl-10 select-text">
-                          <div className="text-xs text-[--stone] italic">
-                            ⚖️ <ExpandableText clamp={1} text={opt.tradeoffs} />
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-
-                  {/* Choice D - Custom Response */}
-                  <div
-                    onClick={() => handleSelectChoice("D")}
-                    className={`bg-[--surface] border border-dashed rounded-[16px] p-4 cursor-pointer ${
-                      selectedChoiceId === "D"
-                        ? "border-[--primary] border-dashed"
-                        : "border-[--hairline]"
-                    }`}
-                  >
-                    {selectedChoiceId !== "D" ? (
-                      <div className="flex items-center gap-2 text-sm text-[--slate]">
-                        <span>✏️</span>
-                        <span>Write your own response</span>
-                      </div>
-                    ) : (
-                      <div className="animate-in fade-in duration-200">
-                        <div className="text-sm font-semibold text-[--ink]">Draft Custom Resolution</div>
-                        <Textarea
-                          placeholder="As CTO, I would..."
-                          value={customText}
-                          onChange={(e) => setCustomText(e.target.value)}
-                          rows={4}
-                          className="mt-2 w-full"
-                        />
-                        <div className="text-xs text-right text-[--steel] mt-1">
-                          {customText.length} characters
-                        </div>
-                      </div>
-                    )}
+                  <div className="text-[9px] text-[var(--text-muted)]">
+                    WK {String(currentWeek).padStart(2, "0")} OF 12 // Q3 2026
                   </div>
                 </div>
 
-                {/* Submit Decision Button */}
-                <Button
-                  variant="default"
-                  className="w-full py-3 text-base h-auto mt-4"
-                  disabled={!selectedChoiceId || isSubmitting}
-                  onClick={handleExecuteDecision}
-                >
-                  {isSubmitting ? "Evaluating..." : "Submit Decision →"}
-                </Button>
-              </div>
-            )}
-          </div>
-        </main>
-
-        {/* RIGHT RAIL (DESKTOP) */}
-        <aside className="hidden lg:block h-full overflow-y-auto sticky top-0 border-l border-[--hairline] px-4 py-5 select-none bg-[--canvas]">
-          
-          {/* This Week */}
-          <div className="mb-6">
-            <div className="text-xs font-semibold text-[--steel] uppercase tracking-wider mb-2">
-              Current Turn
-            </div>
-            <div className="rounded-full bg-[--surface] border border-[--hairline] text-xs px-2.5 py-1 text-[--slate] inline-block font-mono">
-              Decision {decisionCount + 1}
-            </div>
-          </div>
-
-          {/* Stakeholders */}
-          <div className="mb-6 select-text">
-            <div className="text-xs font-semibold text-[--steel] uppercase tracking-wider mb-3">
-              Stakeholders
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${getDotColor(companyState.metrics.ceoRelationship)}`} />
-                <span className="text-xs text-[--charcoal] truncate">CEO (Sarah Jenkins)</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${getDotColor(companyState.metrics.budget)}`} />
-                <span className="text-xs text-[--charcoal] truncate">CFO (Sarah Jenkins)</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${getDotColor(companyState.metrics.productVelocity)}`} />
-                <span className="text-xs text-[--charcoal] truncate">CPO (Chief Product Officer)</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${getDotColor(100 - companyState.metrics.technicalDebt)}`} />
-                <span className="text-xs text-[--charcoal] truncate">Director of Architecture</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Recent Decisions */}
-          {companyState.recentDecisions && companyState.recentDecisions.length > 0 && (
-            <div className="mb-6 select-text">
-              <div className="text-xs font-semibold text-[--steel] uppercase tracking-wider mb-3">
-                Recent Decisions
-              </div>
-              <div className="space-y-3">
-                {companyState.recentDecisions.slice(0, 3).map((dec, idx) => (
-                  <div key={idx} className="flex items-start gap-2">
-                    <div className="w-2 h-2 rounded-full bg-[--blue] mt-1.5 flex-shrink-0" />
-                    <div>
-                      <div className="text-xs text-[--charcoal] line-clamp-1 leading-snug">
-                        {dec}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                <div className="border-t border-[var(--matrix-line)] my-2" />
+                <div className="text-[10px] text-[var(--primary)] font-bold mb-0.5">[XP / RANK]</div>
+                <div className="text-[10px] text-[var(--text-bright)] leading-tight truncate">
+                  {playerStats.level.toUpperCase()}
+                </div>
+                <div className="text-[9px] text-[var(--text-muted)] mt-1">
+                  XP: {playerXp} / 1500
+                </div>
+              </AsciiBox>
             </div>
           )}
 
-          {/* Badges Earned */}
-          <div>
-            <div className="text-xs font-semibold text-[--steel] uppercase tracking-wider mb-3">
-              Achievements
+          {/* Separator 1 */}
+          {showLeftColumn && showCenterColumn && (
+            <div className="w-[1ch] flex justify-center items-center text-[var(--matrix-line)] select-none">
+              │
             </div>
-            <div className="grid grid-cols-3 gap-1.5">
-              {Array.from({ length: 6 }).map((_, idx) => {
-                const badge = badges[idx];
-                if (badge) {
-                  const emoji = (badge.label || "🏆").split(" ")[0];
-                  const label = (badge.label || "Award").split(" ").slice(1).join(" ");
-                  return (
-                    <div
-                      key={idx}
-                      className="bg-[--surface] rounded-[12px] p-2 text-center text-xl cursor-pointer hover:border border-[--hairline]"
-                      title={`${label}: ${badge.reason.substring(0, 60)}`}
-                    >
-                      {emoji}
-                    </div>
-                  );
-                }
-                return (
-                  <div
-                    key={idx}
-                    className="bg-[--hairline] rounded-[12px] p-2 text-[--stone] text-xl opacity-30 grayscale cursor-not-allowed"
-                  >
-                    🔒
+          )}
+
+          {/* 2. CENTER PANE — MAIN WORKSPACE (Active Scenario / Modal Overlays) */}
+          {showCenterColumn && (
+            <div className="flex-1 min-w-[56ch] flex flex-col h-full bg-[var(--canvas)] overflow-hidden relative">
+              
+              {/* EXIT CONFIRMATION OVERLAY */}
+              {showQuitConfirm ? (
+                <div className="absolute inset-0 p-4 bg-[var(--canvas)] flex flex-col items-center justify-center z-30">
+                  <div className="w-full max-w-[50ch]">
+                    <AsciiBox variant="double" title="TERMINATE SIMULATION?">
+                      <ScanlinePanel className="flex flex-col items-center text-center gap-4 py-6 text-xs">
+                        <span className="text-[var(--text-alert)] font-bold">
+                          ARE YOU SURE YOU WANT TO QUIT TO MENU?
+                        </span>
+                        <span>YOUR CURRENT SESSION XP WILL BE RESET.</span>
+                        <div className="border-t border-[var(--matrix-line)] w-full my-2" />
+                        <span className="text-[var(--primary)] font-bold">
+                          &gt; PRESS [ENTER] TO CONFIRM // [ESC] TO CANCEL
+                        </span>
+                      </ScanlinePanel>
+                    </AsciiBox>
                   </div>
-                );
-              })}
-            </div>
-          </div>
+                </div>
+              ) : null}
 
-        </aside>
-      </div>
+              {/* WEEKLY DIGEST DIALOG OVERLAY */}
+              {weeklyDigest ? (
+                <div className="absolute inset-0 p-3 bg-[var(--canvas)] z-20 flex flex-col justify-between">
+                  <AsciiBox variant="double" title={`WEEKLY SYSTEM DIAGNOSTIC — WEEK ${String(currentWeek - 1).padStart(2, "0")}`}>
+                    <ScanlinePanel className="flex flex-col gap-2 h-[420px] justify-between text-xs py-2 leading-relaxed">
+                      
+                      {digestPage === 1 ? (
+                        /* PAGE 1: Core reports */
+                        <div className="flex flex-col gap-3">
+                          <div className="font-bold text-[var(--primary-bright)] text-center">
+                            PAGE 1 OF 2 — EXECUTIVES RECAP
+                          </div>
+                          
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-[var(--primary)] font-bold">HEADLINE:</span>
+                            <span className="text-[var(--text-bright)] select-text">
+                              "{weeklyDigest.headline.toUpperCase()}"
+                            </span>
+                          </div>
 
-      {/* EVALUATION MODAL */}
-      <Dialog open={!!activeEvaluation} onOpenChange={() => {}}>
-        {activeEvaluation && (
-          <DialogContent className="max-w-lg rounded-[32px] p-8 gap-0 bg-[--canvas]">
-            <DialogHeader className="mb-0">
-              <div className="flex gap-2 mb-3 items-center">
-                {/* Outcome badge */}
-                <span className={`rounded-full text-xs font-semibold px-3 py-1 ${
-                  activeEvaluation.newCompanyMood === "meltdown" || activeEvaluation.newCompanyMood === "crisis"
-                    ? "bg-[--coral]/15 text-[--coral]"
-                    : activeEvaluation.newCompanyMood === "tense"
-                    ? "bg-amber-100 text-amber-700"
-                    : "bg-[--success-bg] text-[--success-text]"
-                }`}>
-                  {activeEvaluation.newCompanyMood === "meltdown" || activeEvaluation.newCompanyMood === "crisis" ? "Costly Move" :
-                   activeEvaluation.newCompanyMood === "tense" ? "Trade-off" : "Good Call"}
-                </span>
+                          <div className="border-t border-[var(--matrix-line)] my-1" />
 
-                <span className="ml-auto text-sm font-semibold text-[--ink] font-mono">
-                  ⚡ +{activeEvaluation.xpEarned} XP
-                </span>
-              </div>
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-[var(--primary)] font-bold">EXECUTIVE SUMMARY:</span>
+                            <div className="text-[var(--text-standard)] select-text">
+                              {isBodyExpanded 
+                                ? weeklyDigest.summary 
+                                : wrapText(weeklyDigest.summary, 50).slice(0, 4).join("\n")}
+                              {!isBodyExpanded && wrapText(weeklyDigest.summary, 50).length > 4 && (
+                                <span className="text-[var(--primary-dim)] block mt-1 font-bold">
+                                  [ ... PRESS [E] TO EXPAND SUMMARY ]
+                                </span>
+                              )}
+                            </div>
+                          </div>
 
-              <DialogTitle className="text-[20px] font-semibold text-[--ink] leading-[1.4] line-clamp-2">
-                {activeEvaluation.immediateOutcome.split(".")[0]}.
-              </DialogTitle>
-            </DialogHeader>
+                          <div className="border-t border-[var(--matrix-line)] my-1" />
 
-            {/* SCROLLABLE BODY */}
-            <div className="mt-4 space-y-4 max-h-[300px] overflow-y-auto pr-1">
-              <div className="text-sm text-[--charcoal] leading-relaxed max-h-[72px] overflow-y-auto">
-                {activeEvaluation.immediateOutcome}
-              </div>
+                          <div className="grid grid-cols-2 gap-2 text-[10px]">
+                            <div className="border border-[var(--matrix-line)] p-2">
+                              <span className="text-green-400 font-bold">[WIN]</span>
+                              <div className="text-[var(--text-muted)] mt-1 select-text">
+                                {weeklyDigest.biggestWin}
+                              </div>
+                            </div>
+                            <div className="border border-[var(--matrix-line)] p-2">
+                              <span className="text-[var(--text-alert)] font-bold">[MISS]</span>
+                              <div className="text-[var(--text-muted)] mt-1 select-text">
+                                {weeklyDigest.biggestMiss}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        /* PAGE 2: Pulse & Pressure */
+                        <div className="flex flex-col gap-3">
+                          <div className="font-bold text-[var(--primary-bright)] text-center">
+                            PAGE 2 OF 2 — SYSTEM PULSE
+                          </div>
 
-              {activeEvaluation.rippleEffects && (
-                <div className="text-xs text-[--slate] italic leading-relaxed max-h-[48px] overflow-y-auto">
-                  ⟳ Down the line: {activeEvaluation.rippleEffects}
+                          <div className="flex flex-col gap-1">
+                            <span className="text-[var(--primary)] font-bold">ANONYMOUS TEAM FEEDBACK:</span>
+                            <div className="text-[var(--text-standard)] border-l-2 border-[var(--matrix-line)] pl-2 py-1 select-text">
+                              &gt;&gt; "{weeklyDigest.teamPulse}"
+                            </div>
+                          </div>
+
+                          <div className="border-t border-[var(--matrix-line)] my-1" />
+
+                          <div className="flex flex-col gap-1">
+                            <span className="text-[var(--primary)] font-bold">CEO SIGNAL:</span>
+                            <div className="text-[var(--text-bright)] select-text">
+                              VOSS: "{weeklyDigest.ceoThought}"
+                            </div>
+                          </div>
+
+                          <div className="border-t border-[var(--matrix-line)] my-1" />
+
+                          <div className="flex flex-col gap-1">
+                            <span className="text-[var(--text-alert)] font-bold">NEXT WEEK PRESSURE:</span>
+                            <div className="text-[var(--text-alert)] font-bold select-text">
+                              &gt;&gt; {weeklyDigest.upcomingPressure.toUpperCase()}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Pagination Controls */}
+                      <div className="border-t border-[var(--matrix-line)] pt-2 mt-auto text-center flex flex-col gap-1 select-none">
+                        <span className="text-[var(--primary)] font-bold">
+                          {digestPage === 1 ? "> [ENTER] NEXT PAGE <" : `> [ENTER] CONTINUE TO WEEK ${String(currentWeek).padStart(2, "0")} <`}
+                        </span>
+                        <span className="text-[var(--text-muted)] text-[10px]">
+                          [E] EXPAND TEXT // [ESC] PREVIOUS PAGE
+                        </span>
+                      </div>
+                    </ScanlinePanel>
+                  </AsciiBox>
+                </div>
+              ) : null}
+
+              {/* ACTIVE EVALUATION REPORT OVERLAY */}
+              {activeEvaluation ? (
+                <div className="absolute inset-0 p-3 bg-[var(--canvas)] z-20 flex flex-col justify-between">
+                  <AsciiBox variant="double" title="DECISION EVALUATION REPORT">
+                    <ScanlinePanel className="flex flex-col gap-2 h-[420px] justify-between text-xs py-2 leading-relaxed">
+                      
+                      {evalPage === 1 ? (
+                        /* PAGE 1: Outcome and ripple reports */
+                        <div className="flex flex-col gap-3">
+                          <div className="font-bold text-[var(--primary-bright)] text-center">
+                            PAGE 1 OF 2 — IMMEDIATE OUTCOME
+                          </div>
+
+                          <div className="flex flex-col gap-1">
+                            <div className="flex justify-between">
+                              <span className="text-[var(--text-bright)] font-bold">
+                                CHOICE SELECTED: [{selectedChoiceId}]
+                              </span>
+                              <StatusBadge
+                                label={activeEvaluation.newCompanyMood === "meltdown" ? "MELTDOWN" : "RESOLVED"}
+                                variant={activeEvaluation.newCompanyMood === "meltdown" ? "crit" : "ok"}
+                              />
+                            </div>
+                            <div className="text-[var(--text-standard)] select-text">
+                              {isEvaluationExpanded 
+                                ? activeEvaluation.immediateOutcome 
+                                : wrapText(activeEvaluation.immediateOutcome, 50).slice(0, 5).join("\n")}
+                              {!isEvaluationExpanded && wrapText(activeEvaluation.immediateOutcome, 50).length > 5 && (
+                                <span className="text-[var(--primary-dim)] block mt-1 font-bold">
+                                  [ ... PRESS [E] FOR FULL REPORT ]
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="border-t border-[var(--matrix-line)] my-1" />
+
+                          <div className="flex flex-col gap-1">
+                            <span className="text-[var(--primary)] font-bold">DOWNSTREAM EFFECTS:</span>
+                            <div className="text-[var(--text-standard)] select-text">
+                              {isRippleExpanded 
+                                ? activeEvaluation.rippleEffects 
+                                : wrapText(activeEvaluation.rippleEffects || "No imminent ripples detected.", 50).slice(0, 2).join("\n")}
+                              {!isRippleExpanded && wrapText(activeEvaluation.rippleEffects || "", 50).length > 2 && (
+                                <span className="text-[var(--primary-dim)] block mt-1 font-bold">
+                                  [ PRESS [N] TO EXPAND EFFECTS ]
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        /* PAGE 2: Metric Deltas and Achievements */
+                        <div className="flex flex-col gap-2">
+                          <div className="font-bold text-[var(--primary-bright)] text-center mb-1">
+                            PAGE 2 OF 2 — METRICS
+                          </div>
+
+                          <div className="border border-[var(--matrix-line)] p-2 bg-[var(--canvas)] flex flex-col gap-1 text-[11px]">
+                            <span className="text-[var(--primary)] font-bold mb-1 uppercase text-center block">
+                              Metric Delta Report
+                            </span>
+
+                            {Object.entries(activeEvaluation.metricDeltas).map(([key, val]) => {
+                              if (val === 0 || !val) return null;
+                              const isPositive = val > 0;
+                              const currentVal = companyState.metrics[key as keyof Metrics] || 0;
+                              const beforeVal = Math.max(0, Math.min(100, currentVal - val));
+
+                              // Tech debt color is inverted (increase is red, decrease is green)
+                              const isAlert = key === "technicalDebt" ? isPositive : !isPositive;
+                              const direction = isPositive ? "▲" : "▼";
+                              const formattedDelta = `${isPositive ? "+" : ""}${val}`;
+
+                              return (
+                                <div key={key} className="flex justify-between items-center text-[10px] font-mono leading-none py-0.5">
+                                  <span className="w-8 text-[var(--text-standard)] truncate">
+                                    {key.toUpperCase().slice(0, 6)}
+                                  </span>
+                                  <span className={`w-8 font-bold ${isAlert ? "text-[var(--text-alert)]" : "text-green-400"}`}>
+                                    {direction} {formattedDelta}
+                                  </span>
+                                  <span className="flex-1 px-2">
+                                    <AsciiBar value={currentVal} width={12} />
+                                  </span>
+                                  <span className="text-[var(--text-muted)] text-[9px]">
+                                    {beforeVal}% → {currentVal}%
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          <div className="flex justify-between items-center text-[10px] mt-2">
+                            <span>XP EARNED: +{activeEvaluation.xpEarned}</span>
+                            <span className="text-[var(--primary-bright)]">TOTAL: {playerXp} XP</span>
+                          </div>
+
+                          <div className="border-t border-[var(--matrix-line)] my-1" />
+
+                          {/* New Badge Unlock Box */}
+                          {activeEvaluation.badge ? (
+                            <div className="border border-[var(--primary)] p-2 flex flex-col gap-0.5">
+                              <span className="text-green-400 font-bold text-center block">
+                                [NEW BADGE UNLOCKED]
+                              </span>
+                              <div className="flex gap-2 items-center text-[10px] mt-1">
+                                <span className="text-xl">🏆</span>
+                                <div>
+                                  <span className="text-[var(--text-bright)] font-bold">
+                                    {activeEvaluation.badge.label.toUpperCase()}
+                                  </span>
+                                  <span className="text-[var(--text-muted)] block text-[9px]">
+                                    {activeEvaluation.badge.reason.slice(0, 50)}...
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          ) : null}
+
+                          {/* CTO Insight Quote */}
+                          {activeEvaluation.ctoInsight ? (
+                            <div className="flex flex-col gap-0.5 mt-1 text-[10px]">
+                              <span className="text-[var(--primary)] font-bold">CTO INSIGHT:</span>
+                              <div className="text-[var(--text-bright)] italic select-text">
+                                {isInsightExpanded 
+                                  ? activeEvaluation.ctoInsight 
+                                  : wrapText(activeEvaluation.ctoInsight, 50).slice(0, 2).join("\n")}
+                                {!isInsightExpanded && wrapText(activeEvaluation.ctoInsight, 50).length > 2 && (
+                                  <span className="text-[var(--primary-dim)] block font-bold cursor-pointer">
+                                    [ PRESS [I] FOR FULL QUOTE ]
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      )}
+
+                      {/* Controls */}
+                      <div className="border-t border-[var(--matrix-line)] pt-2 mt-auto text-center flex flex-col gap-1 select-none">
+                        <span className="text-[var(--primary)] font-bold">
+                          {evalPage === 1 ? "> [ENTER] NEXT PAGE <" : "> [ENTER] NEXT SCENARIO <"}
+                        </span>
+                        <span className="text-[var(--text-muted)] text-[10px]">
+                          [E] EXPAND OUTCOME // [N] Downstream // [I] Insight // [ESC] Back
+                        </span>
+                      </div>
+                    </ScanlinePanel>
+                  </AsciiBox>
+                </div>
+              ) : null}
+
+              {/* CORE ACTIVE SCENARIO TRANSMISSION */}
+              {isLoading ? (
+                <div className="flex-1 flex flex-col items-center justify-center p-8 select-none">
+                  <span className="text-[var(--primary)] cursor-blink">█</span>
+                  <span className="text-[var(--text-muted)] text-xs font-mono mt-3 animate-pulse">
+                    RECEIVING INCOMING WORKSPACE TELEMETRY...
+                  </span>
+                </div>
+              ) : currentScenario ? (
+                <AsciiBox variant="active" title="INCOMING TRANSMISSION" className="h-full flex flex-col justify-between">
+                  <div className="flex flex-col gap-2">
+                    
+                    {/* Header badges row */}
+                    <div className="flex justify-between items-center text-[10px]">
+                      <div className="flex gap-2">
+                        <StatusBadge label={`DECISION ${String(decisionCount + 1).padStart(2, "0")}`} variant="info" />
+                        <StatusBadge label={companyState.companyMood.toUpperCase()} variant="warn" />
+                        <StatusBadge label={currentScenario.type.toUpperCase()} variant="crit" />
+                      </div>
+                      <span className="text-[var(--primary-dim)] font-bold">
+                        URGENCY: {currentScenario.urgency.toUpperCase()}
+                      </span>
+                    </div>
+
+                    <div className="text-[10px] text-[var(--text-muted)] border-t border-b border-[var(--matrix-line)] py-1 leading-relaxed">
+                      FROM:  {currentScenario.from.toUpperCase()}<br />
+                      VIA:   {currentScenario.channel.replace("_", " ").toUpperCase()}<br />
+                      SUBJ:  {currentScenario.title.toUpperCase()}<br />
+                      WATCH: {(currentScenario.stakeholdersWatching || []).join(" · ").toUpperCase()}
+                    </div>
+
+                    {/* Scenario Transmission Body */}
+                    <div className="border border-[var(--matrix-line)] p-3 bg-[var(--canvas)] relative">
+                      <span className="absolute -top-2 left-2 px-1 text-[10px] bg-[var(--canvas)] text-[var(--primary)] font-bold">
+                        ┌─[ TRANSMISSION BODY ]
+                      </span>
+                      <div className="text-xs leading-relaxed font-mono select-text py-1 max-h-[140px] overflow-y-auto no-scrollbar">
+                        {isBodyExpanded 
+                          ? currentScenario.body 
+                          : wrapText(currentScenario.body, 50).slice(0, 6).join("\n")}
+                        {!isBodyExpanded && wrapText(currentScenario.body, 50).length > 6 && (
+                          <span className="text-[var(--primary-dim)] block mt-1 font-bold">
+                            [ ... {wrapText(currentScenario.body, 50).length - 6} MORE LINES — PRESS [E] TO EXPAND ]
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Private CTO Note */}
+                    {currentScenario.context && (
+                      <div className="border border-[var(--primary-dim)] p-2 relative bg-[var(--canvas)]">
+                        <span className="absolute -top-2 left-2 px-1 text-[10px] bg-[var(--canvas)] text-[var(--primary-dim)] font-bold">
+                          ┌─[ CTO PRIVATE NOTE ]
+                        </span>
+                        <div className="text-[10px] text-[var(--primary-dim)] leading-relaxed select-text py-1">
+                          {isNoteExpanded 
+                            ? currentScenario.context 
+                            : wrapText(currentScenario.context, 50).slice(0, 2).join("\n")}
+                          {!isNoteExpanded && wrapText(currentScenario.context, 50).length > 2 && (
+                            <span className="text-[var(--primary-dim)] block mt-0.5 font-bold cursor-pointer">
+                              [ PRESS [N] TO EXPAND NOTE ]
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Choices Block */}
+                    <div className="flex flex-col mt-1">
+                      <span className="text-[10px] text-[var(--primary)] font-bold mb-1 uppercase">
+                        ════════════════════ [RESPONSE OPTIONS] ════════════════════
+                      </span>
+
+                      <div className="flex flex-col gap-1.5 max-h-[180px] overflow-y-auto pr-1">
+                        {choicesList.map((opt) => {
+                          const isActive = selectedChoiceId === opt.id;
+                          return (
+                            <div key={opt.id} className="flex flex-col">
+                              <PromptButton
+                                label={`${opt.id}: ${opt.label.toUpperCase()}`}
+                                active={isActive}
+                                onClick={() => setSelectedChoiceId(opt.id)}
+                                className="w-fit"
+                              />
+                              {isActive && isChoiceDetailExpanded && (
+                                <div className="text-[10px] text-[var(--text-muted)] ml-6 leading-tight italic select-text">
+                                  RISK: {opt.tradeoffs.toUpperCase()}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+
+                        {/* Custom choice D option */}
+                        <div className="flex flex-col">
+                          <PromptButton
+                            label="D: WRITE CUSTOM RESPONSE"
+                            active={selectedChoiceId === "D"}
+                            onClick={() => setSelectedChoiceId("D")}
+                            className="w-fit"
+                          />
+                          {selectedChoiceId === "D" && (
+                            <div className="flex flex-col gap-1 mt-1 ml-6 select-text">
+                              <TerminalInput
+                                value={customText}
+                                onChange={(val) => setCustomText(val)}
+                                prefix="CTO@NOVACORP:~#"
+                                charLimit={150}
+                                onSubmit={handleExecuteDecision}
+                              />
+                              <span className="text-[9px] text-[var(--text-muted)]">
+                                [PRESS ESC TO CONFIRM TEXT BOUNDARIES // SUBMIT VIA BUTTON BELOW]
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                  </div>
+
+                  {/* Submission and prompt commands */}
+                  <div className="border-t border-[var(--matrix-line)] pt-2 mt-auto flex justify-between items-center text-[10px] select-none">
+                    <div className="text-[var(--text-muted)] flex flex-col gap-0.5">
+                      <span>W/S: Navigate options // A/D: Expand tradeoff</span>
+                      <span>E: Expand body // N: Note // ENTER: Execute</span>
+                    </div>
+                    
+                    <PromptButton
+                      label={isSubmitting ? "EVALUATING..." : "SUBMIT DECISION"}
+                      active={true}
+                      disabled={isSubmitting}
+                      onClick={handleExecuteDecision}
+                    />
+                  </div>
+                </AsciiBox>
+              ) : (
+                <div className="flex-1 flex items-center justify-center p-8 select-none">
+                  <span className="text-[var(--text-muted)]">NO SCENARIOS LOADED. CONTACT ADMINISTRATION.</span>
                 </div>
               )}
 
-              {/* METRIC DELTAS */}
-              <div className="bg-[--surface] rounded-[16px] p-4">
-                <div className="text-xs font-semibold text-[--steel] uppercase tracking-wider mb-3">
-                  Impact on {companyName}
+            </div>
+          )}
+
+          {/* Separator 2 */}
+          {showCenterColumn && showRightColumn && (
+            <div className="w-[1ch] flex justify-center items-center text-[var(--matrix-line)] select-none">
+              │
+            </div>
+          )}
+
+          {/* 3. RIGHT PANE — CONTEXT LOG & TELEMETRY */}
+          {showRightColumn && (
+            <div className="w-[22ch] flex-shrink-0 flex flex-col h-full bg-[var(--canvas)] select-none z-10">
+              <AsciiBox variant="single" title="CONTEXT LOG" className="h-full">
+                <div className="text-[10px] text-[var(--primary)] font-bold mb-1">[THIS WEEK]</div>
+                <div className="text-[10px] text-[var(--text-bright)] leading-tight select-text">
+                  DECISION: {String(decisionCount + 1).padStart(2, "0")}<br />
+                  WEEK:     {String(currentWeek).padStart(2, "0")} / 12
                 </div>
 
-                <div className="flex flex-wrap gap-2">
-                  {Object.entries(activeEvaluation.metricDeltas).map(([key, val]) => {
-                    if (val === 0 || !val) return null;
-                    const isPositive = val > 0;
-                    // For Tech Debt: Positive change means debt increased (which is negative for company state).
-                    // Invert label arrow sign mapping for tech debt to make it read logically to the player.
-                    const isIncrease = val > 0;
-                    const labelStr = key.replace(/([A-Z])/g, " $1");
-                    
-                    if (key === "technicalDebt") {
+                <div className="border-t border-[var(--matrix-line)] my-2" />
+                <div className="text-[10px] text-[var(--primary)] font-bold mb-1.5">[STAKEHOLDERS]</div>
+                <div className="flex flex-col gap-2 text-[10px]">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-green-400 font-bold">[OK]</span>
+                    <span className="truncate">CEO S. VOSS</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    {currentScenario && currentScenario.from.toUpperCase().includes("JORDAN") ? (
+                      <span className="text-[var(--primary)] cursor-blink font-bold">[!!]</span>
+                    ) : (
+                      <span className="text-[var(--primary-dim)] font-bold">[OK]</span>
+                    )}
+                    <span className="truncate">VP ENG J. KIM</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[var(--primary-dim)] font-bold">[OK]</span>
+                    <span className="truncate">BOARD DIRECTORS</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[var(--text-muted)] font-bold">[--]</span>
+                    <span className="text-[var(--text-muted)] truncate">LEAD T. REYES</span>
+                  </div>
+                </div>
+
+                <div className="border-t border-[var(--matrix-line)] my-2" />
+                <div className="text-[10px] text-[var(--primary)] font-bold mb-1.5">[RECENT DECISIONS]</div>
+                <div className="flex flex-col gap-2 text-[10px] text-[var(--text-muted)] max-h-[85px] overflow-y-auto no-scrollbar font-mono select-text">
+                  {companyState.recentDecisions.length > 0 ? (
+                    companyState.recentDecisions.slice(0, 3).map((dec, idx) => {
+                      // e.g. "Week 1: Resolved \"Inc\" with decision A."
+                      // Slice to fit inside column
+                      const cleanDec = dec.replace("Resolved ", "").replace("with decision ", "");
                       return (
-                        <span
-                          key={key}
-                          className={`rounded-full text-xs font-semibold px-3 py-1 ${
-                            isIncrease ? "bg-[--coral]/10 text-[--coral]" : "bg-[--success-bg] text-[--success-text]"
-                          }`}
-                        >
-                          {isIncrease ? `↑ ${labelStr} +${val}` : `↓ ${labelStr} ${val}`}
-                        </span>
+                        <div key={idx} className="leading-snug">
+                          • {cleanDec.slice(0, 18)}
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div>no_recent_decisions</div>
+                  )}
+                </div>
+
+                <div className="border-t border-[var(--matrix-line)] my-2" />
+                <div className="text-[10px] text-[var(--primary)] font-bold mb-1.5">[BADGES EARNED]</div>
+                <div className="flex flex-col gap-1 text-[10px]">
+                  {Array.from({ length: 4 }).map((_, idx) => {
+                    const badge = badges[idx];
+                    if (badge) {
+                      return (
+                        <div key={idx} className="truncate text-green-400 font-bold">
+                          [{badge.label.toUpperCase().slice(0, 14)}]
+                        </div>
                       );
                     }
-
                     return (
-                      <span
-                        key={key}
-                        className={`rounded-full text-xs font-semibold px-3 py-1 ${
-                          isPositive ? "bg-[--success-bg] text-[--success-text]" : "bg-[--coral]/10 text-[--coral]"
-                        }`}
-                      >
-                        {isPositive ? `↑ ${labelStr} +${val}` : `↓ ${labelStr} ${val}`}
-                      </span>
+                      <div key={idx} className="text-[var(--text-muted)]">
+                        [???????????] LOCKED
+                      </div>
                     );
                   })}
                 </div>
-              </div>
 
-              {/* XP LEVEL UP */}
-              {xpPercent < 20 && playerStats.xp > 0 && (
-                <div className="flex items-center gap-3">
-                  <span className="bg-[--blue-200] text-[--blue-700] rounded-full text-xs font-semibold px-3 py-1">
-                    Level Up! →
-                  </span>
-                  <Progress value={xpPercent} className="flex-1 h-1.5" />
-                  <span className="text-xs text-[--steel]">{playerStats.level}</span>
+                <div className="border-t border-[var(--matrix-line)] my-2" />
+                <div className="text-[10px] text-[var(--primary)] font-bold mb-1">[SYSTEM STATUS]</div>
+                <div className="text-[10px] text-[var(--text-muted)] leading-tight select-text flex flex-col gap-0.5">
+                  <div>API:     <span className="text-green-400 font-bold">[ONLINE]</span></div>
+                  <div>ENGINE:  <span className="text-[var(--primary)] font-bold">[ACTIVE]</span></div>
+                  <div>TIMER:   <span className="text-[var(--text-muted)] font-bold">[--:--]</span></div>
                 </div>
-              )}
-
-              {/* BADGE EARNED BLOCK */}
-              {activeEvaluation.badge && (
-                <div className="bg-[--primary] rounded-[16px] p-4 flex items-center gap-3 text-white">
-                  <div className="text-3xl">
-                    {(activeEvaluation.badge.label || "🏆").split(" ")[0]}
-                  </div>
-                  <div>
-                    <div className="text-xs font-semibold text-white/60">New Badge!</div>
-                    <div className="text-sm font-semibold text-white line-clamp-1">
-                      {(activeEvaluation.badge.label || "Award").split(" ").slice(1).join(" ")}
-                    </div>
-                    <div className="text-xs text-white/70 mt-0.5 line-clamp-1">
-                      {activeEvaluation.badge.reason}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* CTO INSIGHT */}
-              {activeEvaluation.ctoInsight && (
-                <div className="border-l-4 border-[--blue] pl-4">
-                  <span className="text-xs font-semibold text-[--steel] block">💡 CTO Insight</span>
-                  <div className="max-h-[60px] overflow-y-auto mt-1 font-serif italic text-sm text-[--charcoal] leading-relaxed">
-                    {activeEvaluation.ctoInsight}
-                  </div>
-                </div>
-              )}
+              </AsciiBox>
             </div>
+          )}
 
-            <DialogFooter className="mt-6 pt-0">
-              <Button variant="default" className="w-full py-3 text-base h-auto" onClick={closeEvaluation}>
-                Next Scenario →
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        )}
-      </Dialog>
+        </div>
 
-      {/* WEEKLY DIGEST MODAL */}
-      <Dialog open={!!weeklyDigest}>
-        {weeklyDigest && (
-          <DialogContent className="max-w-lg rounded-[32px] p-8 gap-0 bg-[--canvas]">
-            <DialogHeader>
-              <div className="text-xs font-semibold text-[--steel] uppercase tracking-wider mb-2">
-                📰 Week {companyState.company.week - 1} Wrap-Up
-              </div>
-              <DialogTitle className="text-[20px] font-semibold text-[--ink] leading-[1.4] line-clamp-1">
-                {weeklyDigest.headline}
-              </DialogTitle>
-            </DialogHeader>
+        {/* 4. FIXED BOTTOM STATUS BAR (FULL WIDTH) */}
+        <div className="border-t border-[var(--matrix-line)] bg-[var(--canvas)] px-2 py-1 flex justify-between items-center text-[10px] font-mono text-[var(--text-muted)] select-none">
+          <div className="truncate">
+            [CTO SIM] {companyName.slice(0, 10)} // {companyState.company.stage?.toUpperCase().split(" ")[0] || "SERIES B"} // WEEK {String(currentWeek).padStart(2, "0")} // MODE: NORMAL
+          </div>
+          <div>
+            [KEYS] TAB:PANES // F1:DASHBOARD // W/S:NAV // E:EXPAND // Q:QUIT
+          </div>
+        </div>
 
-            {/* SCROLLABLE CONTENT */}
-            <div className="mt-5 max-h-[380px] overflow-y-auto pr-1 space-y-4">
-              <div className="text-sm text-[--charcoal] leading-relaxed max-h-[72px] overflow-y-auto select-text">
-                {weeklyDigest.summary}
-              </div>
-
-              {/* Win/Miss Cards */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-[--success-bg] rounded-[12px] p-3">
-                  <div className="text-xs font-semibold text-[--success-text] mb-1">
-                    ✅ Biggest Win
-                  </div>
-                  <div className="text-xs text-[--charcoal] leading-relaxed line-clamp-2 select-text">
-                    {weeklyDigest.biggestWin}
-                  </div>
-                </div>
-
-                <div className="bg-[--coral]/8 rounded-[12px] p-3">
-                  <div className="text-xs font-semibold text-[--coral] mb-1">
-                    ⚠️ Missed
-                  </div>
-                  <div className="text-xs text-[--charcoal] leading-relaxed line-clamp-2 select-text">
-                    {weeklyDigest.biggestMiss}
-                  </div>
-                </div>
-              </div>
-
-              {/* Team Pulse */}
-              <div className="bg-[--surface] rounded-[12px] p-3 select-text">
-                <div className="text-xs text-[--steel] mb-1">
-                  Anonymous Slack
-                </div>
-                <div className="font-serif italic text-sm text-[--charcoal] leading-relaxed line-clamp-2">
-                  "{weeklyDigest.teamPulse}"
-                </div>
-              </div>
-
-              {/* CEO Outlook */}
-              <div className="flex items-start gap-2 select-text">
-                <div className="w-6 h-6 rounded-full bg-[--coral] text-white text-xs font-semibold flex items-center justify-center flex-shrink-0">
-                  {initials}
-                </div>
-                <div>
-                  <div className="text-xs text-[--steel]">Your CEO:</div>
-                  <div className="text-xs text-[--charcoal] leading-relaxed line-clamp-1">
-                    {weeklyDigest.ceoThought}
-                  </div>
-                </div>
-              </div>
-
-              {/* Looming Challenge */}
-              <div className="bg-amber-50 border-l-4 border-amber-400 rounded-r-[12px] px-3 py-2 select-text">
-                <div className="text-xs font-semibold text-amber-700">
-                  Next week:
-                </div>
-                <div className="text-xs text-amber-900 mt-0.5 line-clamp-2">
-                  {weeklyDigest.upcomingPressure}
-                </div>
-              </div>
-            </div>
-
-            <DialogFooter className="mt-6">
-              <Button variant="default" className="w-full py-3 text-base h-auto" onClick={closeWeeklyDigest}>
-                Continue to Week {companyState.company.week} →
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        )}
-      </Dialog>
-
+      </div>
     </div>
   );
 }
