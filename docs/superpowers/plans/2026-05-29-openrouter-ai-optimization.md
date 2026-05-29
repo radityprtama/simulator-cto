@@ -1,3 +1,55 @@
+# OpenRouter AI Optimization Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Replace the latency-heavy OpenRouter fallback loop with a fast single-path adapter that uses structured JSON output, bounded timeouts, and at most one transient retry.
+
+**Architecture:** Keep the existing `getGeminiClient()` and `ai.models.generateContent(...)` contract so the four API routes stay stable. Refactor the OpenRouter branch inside `lib/gemini.ts` into typed helpers for prompt normalization, Gemini-schema conversion, request construction, timeout handling, transient retry, and response normalization. Update env/docs so OpenRouter users know the fast-path configuration knobs.
+
+**Tech Stack:** Next.js 15 App Router, TypeScript strict mode, `@google/genai`, OpenRouter chat completions over `fetch`, npm validation scripts.
+
+---
+
+## Scope Check
+
+This plan implements one subsystem: the OpenRouter AI adapter and its usage documentation. It does not alter game mechanics, prompts, streaming behavior, UI design, or the Gemini fallback path.
+
+## File Structure
+
+- Modify `lib/gemini.ts`: owns the Gemini/OpenRouter client selection and the OpenRouter-compatible `generateContent` adapter.
+- Modify `.env.example`: documents OpenRouter fast-path environment variables.
+- Modify `README.md`: documents Gemini and OpenRouter setup.
+- Do not modify `app/api/*/route.ts`: route prompts and schemas remain compatible with the existing `generateContent` shape.
+- Do not touch the untracked `bun.lock` file unless the user separately asks for lockfile cleanup.
+
+## Validation Baseline
+
+- `npm run lint` passes before implementation.
+- `npm run build` passes when network access is available for `next/font` to fetch Google Fonts.
+- In the default restricted sandbox, `npm run build` can fail with `getaddrinfo EAI_AGAIN fonts.googleapis.com`; that is an environment/network failure, not an app build regression.
+
+---
+
+### Task 1: Replace OpenRouter Adapter With Fast Single-Path Implementation
+
+**Files:**
+- Modify: `lib/gemini.ts`
+
+- [ ] **Step 1: Confirm lint baseline**
+
+Run:
+
+```bash
+npm run lint
+```
+
+Expected: exits `0` and prints the `eslint .` command with no lint errors.
+
+- [ ] **Step 2: Replace `lib/gemini.ts` with the fast OpenRouter adapter**
+
+Use this full file content:
+
+```ts
 import { GoogleGenAI } from "@google/genai";
 
 type GenerateContentParams = {
@@ -477,3 +529,265 @@ export function getGeminiClient(): any {
   }
   return aiInstance;
 }
+```
+
+- [ ] **Step 3: Run lint after adapter replacement**
+
+Run:
+
+```bash
+npm run lint
+```
+
+Expected: exits `0` with no lint errors.
+
+- [ ] **Step 4: Run production build after adapter replacement**
+
+Run:
+
+```bash
+npm run build
+```
+
+Expected: exits `0` and lists the static and dynamic routes. If the command fails with `getaddrinfo EAI_AGAIN fonts.googleapis.com`, rerun it with approved network access; do not change app code for that font-fetch failure.
+
+- [ ] **Step 5: Commit the adapter change**
+
+Run:
+
+```bash
+git add lib/gemini.ts
+git commit -m "feat: optimize OpenRouter adapter"
+```
+
+Expected: commit succeeds and includes only `lib/gemini.ts`.
+
+---
+
+### Task 2: Document OpenRouter Fast-Path Configuration
+
+**Files:**
+- Modify: `.env.example`
+- Modify: `README.md`
+
+- [ ] **Step 1: Replace `.env.example` with explicit OpenRouter settings**
+
+Use this full file content:
+
+```dotenv
+# GEMINI_API_KEY: Required if not using OpenRouter.
+# AI Studio automatically injects this at runtime from user secrets.
+# Users configure this via the Secrets panel in the AI Studio UI.
+GEMINI_API_KEY="MY_GEMINI_API_KEY"
+
+# OPENROUTER_API_KEY: Optional. If set, replaces Gemini as the primary AI engine.
+# Configure this via the Secrets panel in the AI Studio UI.
+OPENROUTER_API_KEY=""
+
+# OPENROUTER_MODEL: Optional. Single fast model used for all OpenRouter calls.
+# The app defaults to google/gemini-2.5-flash when this is empty.
+OPENROUTER_MODEL="google/gemini-2.5-flash"
+
+# OPENROUTER_TIMEOUT_MS: Optional. Per-request timeout for OpenRouter calls.
+OPENROUTER_TIMEOUT_MS="12000"
+
+# OPENROUTER_REFERER: Optional. Site URL sent to OpenRouter for app attribution.
+# Defaults to APP_URL, then http://localhost:3000.
+OPENROUTER_REFERER=""
+
+# OPENROUTER_TITLE: Optional. Site title sent to OpenRouter for app attribution.
+OPENROUTER_TITLE="CTO Simulator"
+
+# APP_URL: The URL where this applet is hosted.
+# AI Studio automatically injects this at runtime with the Cloud Run service URL.
+# Used for self-referential links, OAuth callbacks, API attribution, and route URLs.
+APP_URL="MY_APP_URL"
+```
+
+- [ ] **Step 2: Replace `README.md` with setup instructions that include OpenRouter**
+
+Use this full file content:
+
+```md
+<div align="center">
+<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
+</div>
+
+# Run and deploy your AI Studio app
+
+This contains everything you need to run your app locally.
+
+View your app in AI Studio: https://ai.studio/apps/7f28e788-8ec6-4cd5-9045-10bd8b75e8a8
+
+## Run Locally
+
+**Prerequisites:** Node.js
+
+1. Install dependencies:
+   `npm install`
+2. Configure one AI provider in `.env.local`:
+   - Gemini: set `GEMINI_API_KEY`
+   - OpenRouter: set `OPENROUTER_API_KEY`
+3. Run the app:
+   `npm run dev`
+
+## OpenRouter
+
+When `OPENROUTER_API_KEY` is set, the app uses OpenRouter instead of Gemini for server-side AI calls.
+
+Recommended fast-path settings:
+
+```dotenv
+OPENROUTER_API_KEY="YOUR_OPENROUTER_KEY"
+OPENROUTER_MODEL="google/gemini-2.5-flash"
+OPENROUTER_TIMEOUT_MS="12000"
+OPENROUTER_TITLE="CTO Simulator"
+```
+
+The OpenRouter adapter uses one configured model per request, structured JSON output for game API responses, and a bounded timeout so gameplay does not stall behind broad model fallback loops.
+```
+
+- [ ] **Step 3: Run lint after docs/config updates**
+
+Run:
+
+```bash
+npm run lint
+```
+
+Expected: exits `0` with no lint errors.
+
+- [ ] **Step 4: Run production build after docs/config updates**
+
+Run:
+
+```bash
+npm run build
+```
+
+Expected: exits `0` and lists the static and dynamic routes. If the command fails with `getaddrinfo EAI_AGAIN fonts.googleapis.com`, rerun it with approved network access; do not change app code for that font-fetch failure.
+
+- [ ] **Step 5: Commit docs/config updates**
+
+Run:
+
+```bash
+git add .env.example README.md
+git commit -m "docs: document OpenRouter configuration"
+```
+
+Expected: commit succeeds and includes only `.env.example` and `README.md`.
+
+---
+
+### Task 3: Smoke-Test OpenRouter Route Behavior
+
+**Files:**
+- No source file changes.
+
+- [ ] **Step 1: Confirm OpenRouter credentials are configured without printing secrets**
+
+Run:
+
+```bash
+node -e "const fs=require('fs'); const files=['.env.local','.env']; const text=files.filter(fs.existsSync).map((file)=>fs.readFileSync(file,'utf8')).join('\n'); process.exit(/OPENROUTER_API_KEY\\s*=\\s*['\"]?[^'\"\\n]+/.test(text)?0:1)"
+```
+
+Expected: exits `0`. If it exits `1`, add `OPENROUTER_API_KEY` to `.env.local` before continuing.
+
+- [ ] **Step 2: Start the Next.js dev server**
+
+Run:
+
+```bash
+npm run dev
+```
+
+Expected: the server starts and prints a local URL, usually `http://localhost:3000`.
+
+- [ ] **Step 3: Smoke-test company generation in a second terminal**
+
+Run:
+
+```bash
+curl -sS http://localhost:3000/api/create-company \
+  -H "Content-Type: application/json" \
+  -d '{"companyName":"Latency Labs","industry":"AI Infrastructure","companyStage":"Series A","playerName":"Alex Chen"}'
+```
+
+Expected: response is valid JSON with `company`, `metrics`, `activeFlags`, and `companyMood` keys. The server log should show one OpenRouter request unless a transient `429`, `502`, `503`, or `504` caused exactly one retry.
+
+- [ ] **Step 4: Smoke-test scenario generation in the second terminal**
+
+Run:
+
+```bash
+curl -sS http://localhost:3000/api/generate-scenario \
+  -H "Content-Type: application/json" \
+  -d '{"company":{"name":"Latency Labs","industry":"AI Infrastructure","stage":"Series A","headcount":28},"metrics":{"budget":62,"teamMorale":55,"technicalDebt":68,"productVelocity":58,"ceoRelationship":60,"customerSatisfaction":57,"securityPosture":52,"talentPipeline":48},"activeFlags":["legacy_monolith_pressure"],"companyMood":"tense","recentDecisions":[]}'
+```
+
+Expected: response is valid JSON with `scenario`, `choices`, and `stakeholdersWatching` keys. `choices` includes an item with `"id":"D"`.
+
+- [ ] **Step 5: Stop the dev server**
+
+Run in the dev-server terminal:
+
+```bash
+Ctrl-C
+```
+
+Expected: the dev server exits cleanly.
+
+---
+
+### Task 4: Final Verification And Handoff
+
+**Files:**
+- No source file changes unless previous tasks exposed a defect.
+
+- [ ] **Step 1: Run final lint**
+
+Run:
+
+```bash
+npm run lint
+```
+
+Expected: exits `0` with no lint errors.
+
+- [ ] **Step 2: Run final production build**
+
+Run:
+
+```bash
+npm run build
+```
+
+Expected: exits `0` and lists the static and dynamic routes. If the command fails with `getaddrinfo EAI_AGAIN fonts.googleapis.com`, rerun it with approved network access; do not change app code for that font-fetch failure.
+
+- [ ] **Step 3: Verify git status**
+
+Run:
+
+```bash
+git status --short
+```
+
+Expected: no tracked source/doc changes remain unstaged or uncommitted. The pre-existing untracked `bun.lock` may still appear and should be left alone.
+
+- [ ] **Step 4: Summarize completion**
+
+Report:
+
+```md
+Implemented the fast OpenRouter path in `lib/gemini.ts`, documented the OpenRouter env vars, and validated with `npm run lint`, `npm run build`, and OpenRouter route smoke tests. The existing untracked `bun.lock` was left untouched.
+```
+
+Expected: user receives a concise summary with any validation command that could not be run.
+
+## Self-Review
+
+- Spec coverage: the plan implements one model request by default, structured JSON schema output, `cache: "no-store"`, timeout handling, one transient retry for `429`, `502`, `503`, and `504`, route compatibility, env docs, lint/build validation, and OpenRouter smoke tests.
+- Placeholder scan: no placeholder markers, incomplete code steps, or vague implementation instructions are present.
+- Type consistency: the plan uses `GenerateContentParams`, `GenerateContentConfig`, `GeminiSchema`, `OpenRouterResponseFormat`, and `JsonSchema` consistently inside `lib/gemini.ts`.
